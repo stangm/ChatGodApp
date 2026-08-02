@@ -161,7 +161,7 @@ toggle TTS per player, all live.
 ### Assigning players
 
 Chatters join a pool by typing `!player1`, `!player2` or `!player3`. **Pick Random** draws one from
-that pool. Or type a username directly into *Choose User* and hit enter.
+that pool. Or type a username directly into *Choose user* and hit enter.
 
 ### Voice styles
 
