@@ -219,3 +219,6 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 | `templates/overlay.html` | On-stream graphic, lip sync |
 | `templates/control.html` | Operator dashboard |
 | `audio_player.py`, `obs_websockets.py` | Legacy server-side playback and OBS filter toggling, kept for the startup chime and test scripts. Off by default (`OBS_WEBSOCKETS_ENABLED` in `players.py`) |
+| `tts_test.py` | Synthesis and local playback without Twitch or a browser — checks voices and Azure credentials on their own |
+| `voice_test.py` | Walks the voice and style lists, so you can hear combinations before assigning them |
+| `autoplay_test.html` | Standalone check that a browser source can play audio with no user gesture. Open it as a Browser source if autoplay behaviour ever changes |
