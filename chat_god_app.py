@@ -19,7 +19,12 @@ from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALO
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
 
-TWITCH_CHANNEL_NAME = 'silverstagvt' # Replace this with your channel name
+# Set TWITCH_CHANNEL_NAME as an environment variable alongside the other three.
+# The fallback keeps existing installs working, but setting the variable means
+# setup is four env vars and no source edits -- and keeps the channel name out of
+# a public repo. Lowercased because twitchio matches channels case-sensitively
+# and the common mistake is typing the display name.
+TWITCH_CHANNEL_NAME = os.getenv('TWITCH_CHANNEL_NAME', 'silverstagvt').strip().lower()
 
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode="threading")
@@ -425,11 +430,23 @@ def startTwitchBot(tts_manager, speech_worker):
 
 if __name__=='__main__':
 
+    if not os.getenv('TWITCH_CHANNEL_NAME'):
+        print(f"\nTWITCH_CHANNEL_NAME isn't set -- reading #{TWITCH_CHANNEL_NAME}.\n"
+              "  Set it alongside your other environment variables:\n"
+              '  [Environment]::SetEnvironmentVariable("TWITCH_CHANNEL_NAME", '
+              '"yourchannel", "User")\n'
+              "  then reopen the terminal.")
+    if not os.getenv('TWITCH_ACCESS_TOKEN'):
+        print("\nTWITCH_ACCESS_TOKEN isn't set. The bot won't be able to log in.\n"
+              "  If you set it recently, reopen the terminal -- environment variables\n"
+              "  don't reach shells that were already open.")
+
     tts_manager = TTSManager()
     tts_manager.play_startup_chime()
     speech_worker = SpeechWorker(tts_manager)
 
-    print(f"\nControl panel: http://127.0.0.1:5000/")
+    print(f"\nReading Twitch channel: #{TWITCH_CHANNEL_NAME}")
+    print(f"Control panel: http://127.0.0.1:5000/")
     for number in PLAYER_CONFIG:
         print(f"Overlay player {number}: http://127.0.0.1:5000/overlay?player={number}")
     print()

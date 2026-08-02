@@ -65,13 +65,10 @@ Generate a token at <https://twitchtokengenerator.com/> — choose **Bot Chat To
 
 ```powershell
 [Environment]::SetEnvironmentVariable("TWITCH_ACCESS_TOKEN", "yourtokenhere", "User")
+[Environment]::SetEnvironmentVariable("TWITCH_CHANNEL_NAME", "yourchannel", "User")
 ```
 
-Then set your channel in `chat_god_app.py` (line 21):
-
-```python
-TWITCH_CHANNEL_NAME = 'yourchannelname'   # lowercase, no URL, no @
-```
+The channel name is your channel, no URL and no `@` — case doesn't matter, it gets lowercased.
 
 **Close and reopen your terminal** — environment variables don't reach already-open shells. This is
 the single most common "it works for everyone else" failure.

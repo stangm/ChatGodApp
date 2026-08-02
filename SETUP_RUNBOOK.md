@@ -13,8 +13,9 @@ If you've set this up before, use the README and skip this.
 1. **Environment variables don't reach terminals that are already open.** You'll set three of them
    below. Each time, close PowerShell and reopen it. This is the single most common "it worked for
    everyone else" failure, and it looks exactly like a bad token.
-2. **`TWITCH_CHANNEL_NAME` is hardcoded** on line 21 of `chat_god_app.py`. Change it or the bot
-   reads someone else's chat and ignores you entirely.
+2. **Forgetting `TWITCH_CHANNEL_NAME`** means the bot reads someone else's chat and ignores you
+   entirely. It falls back to a hardcoded channel when the variable is unset, and warns loudly at
+   startup — read the first few lines of output.
 3. **Testing the overlay in a normal browser tab gives you silence.** Chrome and Firefox block
    autoplay until you interact with the page; OBS browser sources don't. The page logs
    `Autoplay blocked` to the console and carries on. Not a bug — judge audio in OBS, not in a tab.
@@ -88,14 +89,25 @@ Paste the token exactly as the generator gave it. The `oauth:` prefix doesn't ma
 twitchio does `token.replace("oauth:", "")` on input and re-adds it when authenticating, so bare and
 prefixed tokens are identical on the wire. **Close and reopen PowerShell** (gotcha #1).
 
-**2.3 Point the bot at your channel.** Edit line 21 of `chat_god_app.py`:
+**2.3 Point the bot at your channel.** Also an environment variable — no source file to edit:
 
-```python
-TWITCH_CHANNEL_NAME = 'yourchannelname'   # lowercase, no URL, no @
+```powershell
+[Environment]::SetEnvironmentVariable("TWITCH_CHANNEL_NAME", "yourchannel", "User")
 ```
 
-**Check:** `python -c "import os; print(os.getenv('TWITCH_ACCESS_TOKEN')[:10])"` — should print the
-first characters of your token, not `None`.
+Your channel, no URL and no `@`. Case doesn't matter; the app lowercases it, because twitchio
+matches channels case-sensitively and typing the display name is the usual slip.
+
+Reopen PowerShell again.
+
+**Check:** both variables should come back non-empty:
+
+```powershell
+python -c "import os; print(os.getenv('TWITCH_ACCESS_TOKEN','')[:10], os.getenv('TWITCH_CHANNEL_NAME'))"
+```
+
+If either prints empty or `None`, the terminal predates the variable. The app also warns at startup
+about either one being unset, and prints which channel it's actually reading.
 
 ---
 

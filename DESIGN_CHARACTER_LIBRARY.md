@@ -179,17 +179,16 @@ B is worth doing first if you want a win before the setup screen exists.
 
 The `TWITCH_CHANNEL_NAME` env var is independent of all five and can land whenever.
 
-**Docs to update as these land:** the README's setup section and the runbook's Stage 2 both walk
-through editing line 21, and both list three environment variables. Stage 4 of the runbook describes
-the `player<N>-*.png` convention, which characters replace. Each stage should carry its own doc
-change rather than leaving a sweep for the end — that's how the README ended up describing the Move
-plugin months after it was gone.
+**Docs to update as these land:** Stage 4 of the runbook describes the `player<N>-*.png` convention,
+which characters replace. Each stage should carry its own doc change rather than leaving a sweep for
+the end — that's how the README ended up describing the Move plugin months after it was gone. (The
+env-var change already carried its own: both docs now list four variables and no source edit.)
 
 ---
 
 ## Decided
 
-### `TWITCH_CHANNEL_NAME` becomes a fourth environment variable
+### `TWITCH_CHANNEL_NAME` becomes a fourth environment variable — **done**
 
 Install-time configuration, not something the web UI touches — it's set once per install, not per
 stream, so it doesn't belong in a character file either.
