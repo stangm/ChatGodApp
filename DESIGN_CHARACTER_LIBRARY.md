@@ -54,21 +54,27 @@ that only exists on your disk.
 ```json
 {
   "characters": {
-    "goblin": {
-      "display_name": "Goblin",
-      "art_closed": "characters/goblin-closed.png",
-      "art_open":   "characters/goblin-open.png",
+    "wizard": {
+      "display_name": "Henry Potter",
+      "art_closed": "characters/wizard-closed.png",
+      "art_open":   "characters/wizard-open.png",
       "default_voice": "en-US-DavisNeural",
-      "default_style": "random"
+      "default_style": "random",
+      "show_character_name": true,
+      "show_chatter_name": true,
+      "show_message": false
     }
   },
   "slots": {
-    "1": { "character": "goblin" },
-    "2": { "character": "wizard" },
+    "1": { "character": "wizard" },
+    "2": { "character": "goblin" },
     "3": { "character": null }
   }
 }
 ```
+
+`display_name` is the character's name as it appears on stream — "Henry Potter", not "wizard". The
+key is an id; the display name is prose and can change without breaking slot references.
 
 Art paths are relative to `static/`, the same convention `chat_god_app.py` already resolves through
 `url_for('static', ...)`. The overlay route keeps that resolution and changes only where the path
@@ -91,9 +97,9 @@ hook. The override machinery is built.
 
 ### What resets an override
 
-| Action | Effect on the live voice |
+| Action | Effect on the live voice and display toggles |
 |---|---|
-| Assign a character to a slot | **Reset** to that character's default |
+| Assign a character to a slot | **Reset** to that character's defaults |
 | Pick Random / Choose user | **No change** — same character, different chatter |
 | Restart the app | Back to character defaults (layer 2 is in memory) |
 | **Save as default** | Writes layer 2 into the library, so it becomes layer 1 |
@@ -101,6 +107,76 @@ hook. The override machinery is built.
 Changing the cast is a deliberate reset point; changing who's talking isn't. **Save as default** is
 what stops a good mid-stream discovery from evaporating — without it the only way to change a
 character's default is editing JSON by hand.
+
+---
+
+## What the overlay shows
+
+Three elements below the art, each independently toggleable, each a property of the **character** —
+so assigning the Wizard brings his display settings with him, the same way his voice does.
+
+| Element | Example | Default |
+|---|---|---|
+| Character name | `Henry Potter` | on |
+| Chatter name | `silverstagvt` | on |
+| Message text | what they typed | on |
+
+Character name on top and larger, chatter name smaller beneath it:
+
+```
+        ┌─────────────────┐
+        │   character art │
+        └─────────────────┘
+           Henry Potter          <- character name, larger
+            silverstagvt         <- chatter name, smaller
+        ┌─────────────────┐
+        │ message text    │
+        └─────────────────┘
+```
+
+Toggles follow the same three layers as voice: the character holds the persisted default, the
+control panel edits live, **save as default** writes back. Assigning a character resets to its
+values.
+
+**Why per character rather than global.** A narrator who never shows a caption can sit alongside
+players who always do, and the setting travels with the character rather than having to be
+remembered per stream.
+
+**One case to watch:** with the chatter name off and the message off, a character that isn't
+currently animating shows nothing but static art. That's indistinguishable from broken. Worth a
+subtle "someone is assigned" cue — a border tint, or the art at full opacity only when a chatter is
+assigned — rather than leaving the operator guessing.
+
+### Overlay sizing
+
+An OBS browser source has a fixed width and height, but the page's content height now varies with
+what's toggled on. Two ways to reconcile that.
+
+**A. Art anchored to the top, source sized for the maximum.** Text sits below the art and collapses
+when hidden, leaving transparent space at the bottom. Anchoring to the *top* is the important part:
+anchor to the bottom and the character slides around the canvas every time a caption is toggled.
+
+Cost: the source's bounding box is taller than the visible content, so dragging and scaling in OBS
+means handling a box with dead air in it.
+
+**B. Text overlaid on the lower part of the art.** Source height always equals art height, so
+toggling changes nothing about the source — no resizing, no dead space, no arithmetic ever.
+
+Cost: a different look, and captions land on the character if the art fills the frame.
+
+**Decision: A**, because it preserves the current layout and is the smaller change. B is the more
+robust answer and is the fix if the dead space turns out to be irritating in practice.
+
+### The app should report the source size
+
+It knows the art dimensions and the current toggle state, so it can do the arithmetic instead of a
+README:
+
+> **Player 1** · `http://127.0.0.1:5000/overlay?player=1` · **500 × 513** *(copy)*
+
+Updating as toggles change. This removes the one piece of manual calculation left in OBS setup, and
+it's the sort of thing nobody wants to re-derive six months later. It also belongs in the setup
+screen's OBS step, where it's the entire content of that page.
 
 ---
 
@@ -149,7 +225,11 @@ rendered by no route — possibly more to fight than a clean file.
 ## Live updates
 
 The overlay already holds a socket. Assigning a character emits an `art_changed` event with the new
-URLs; the page swaps `src` in place. No browser-source refresh, no OBS interaction.
+URLs and display settings; the page swaps `src` in place and shows or hides the name and message
+boxes. No browser-source refresh, no OBS interaction.
+
+Toggling a caption from the control panel is the same event with only the flags changed — the page
+adds or removes a class, and the boxes collapse. Since the art is top-anchored, nothing moves.
 
 **Cache busting is mandatory.** Browser sources cache images hard, so overwriting a PNG in place
 changes nothing visible. Append the file's mtime as a query string (`?v=1722...`) and the swap is
@@ -163,6 +243,11 @@ Each stage leaves the app working.
 
 **A. `characters.json` read path.** Load and merge over `PLAYER_CONFIG`; no UI. Hand-write the file
 to test. Proves the merge and the fallback-to-defaults case.
+
+**A2. Display toggles and the character name.** Overlay renders the character name above the chatter
+name, and honours the three flags. Top-anchored art, collapsing boxes. Control panel gets the three
+switches per player and the reported source size. Independent of art upload, so it can land as soon
+as A does — and the message toggle alone is worth having before any of the rest.
 
 **B. `fetch_voices.py` and `voices.json`.** Replace the hardcoded voice list; filter style dropdowns
 by `style_list`. Independently useful — fixes the silent-style bug on its own, with no setup screen.
@@ -233,3 +318,9 @@ Nothing blocking. Worth thinking about during stage E:
 - **Overwrite or version uploaded art?** Uploading `goblin-open.png` twice — replace in place (simple,
   but the cache-buster becomes load-bearing) or write `goblin-open-2.png` and update the reference
   (no cache issues, accumulates files).
+- **What signals "assigned but idle"** when both names and the message are hidden? Static art alone
+  reads as broken. A border tint, or dimming the art until a chatter is assigned, are the obvious
+  candidates — but it's a look decision, not a technical one.
+- **Does the character name show when nobody is assigned?** Arguably yes: the Wizard exists whether
+  or not someone is speaking as him, and a permanently-labelled slot is easier to read on stream.
+  Means the overlay needs character state independent of chatter state.
