@@ -93,6 +93,20 @@
                 refreshStyles(player(this), $(this).val());
             });
 
+            // The server's own view of every player, pushed to this client when the
+            // socket connects. The page was already rendered from the same data, so
+            // normally this changes nothing visible -- it earns its place in the two
+            // cases where the render was stale: a page that loaded before the bot
+            // thread was ready, and a reconnect after the server restarted.
+            socket.on('state', function(state) {
+                $.each(state, function(number, live) {
+                    $('#tts-' + number).prop('checked', live.tts_enabled);
+                    $('#assigned-' + number).text(live.current_user || '(nobody)');
+                    $('#voicename-' + number).val(live.voice_name);
+                    refreshStyles(number, live.voice_name, live.voice_style);
+                });
+            });
+
             // Mirror the overlay so the operator can see who is assigned.
             socket.on('message_send', function(msg) {
                 var name = msg.current_user || '(nobody)';
@@ -135,6 +149,7 @@
 
     <div class="panels">
         {% for number, config in players.items() %}
+        {% set live = state[number] %}
         <section class="panel" data-player="{{ number }}">
 
             <div class="panel-head">
@@ -144,7 +159,7 @@
 
             <div class="assigned">
                 <span class="label">assigned</span>
-                <span class="assigned-name" id="assigned-{{ number }}">(nobody)</span>
+                <span class="assigned-name" id="assigned-{{ number }}">{{ live.current_user or '(nobody)' }}</span>
             </div>
 
             <form class="pickrandom">
@@ -157,7 +172,8 @@
             </form>
 
             <label class="toggle">
-                <input type="checkbox" class="tts-checkbox" checked>
+                <input type="checkbox" class="tts-checkbox" id="tts-{{ number }}"
+                       {% if live.tts_enabled %}checked{% endif %}>
                 <span>Text to speech</span>
             </label>
 
@@ -167,7 +183,7 @@
                     {% for locale_label, group in voice_groups %}
                     <optgroup label="{{ locale_label }}">
                         {% for value, display in group %}
-                        <option value="{{ value }}" {% if value == config.voice_name %}selected{% endif %}>{{ display }}</option>
+                        <option value="{{ value }}" {% if value == live.voice_name %}selected{% endif %}>{{ display }}</option>
                         {% endfor %}
                     </optgroup>
                     {% endfor %}
@@ -178,7 +194,7 @@
                 <span class="label">Style</span>
                 <select class="voicestyle" id="voicestyle-{{ number }}">
                     {% for value in styles %}
-                    <option value="{{ value }}" {% if value == default_style %}selected{% endif %}>{{ value }}</option>
+                    <option value="{{ value }}" {% if value == live.voice_style %}selected{% endif %}>{{ value }}</option>
                     {% endfor %}
                 </select>
             </label>

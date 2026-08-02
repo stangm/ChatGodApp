@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 from collections import OrderedDict
 from flask import Flask, abort, redirect, render_template, request, send_file, url_for
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, emit
 import asyncio
 import queue
 import threading
@@ -173,6 +173,39 @@ VOICE_GROUPS = _grouped_voices()
 VOICE_STYLE_MAP = {voice: styles_for(voice) for voice in AZURE_VOICES}
 
 
+def player_state():
+    """
+    What the server currently believes about every player.
+
+    The control panel used to render fixed defaults: the TTS checkbox hardcoded
+    ticked, voice and style compared against players.py rather than the running
+    values, and the assigned name blank until the next chat message arrived. None
+    of that is state, so a reload silently desynced the operator from the server --
+    untick TTS, reload for any reason, and the box reads ticked while the server
+    has it off. Mid-stream that means "fixing" a setting that was already right.
+
+    One function feeds both consumers, the initial Jinja render and the socket push
+    on connect, so the two cannot drift apart the way template and server did.
+
+    Before the bot thread has constructed the Bot there is no live state to report,
+    so this falls back to the same defaults the app is about to start with -- which
+    makes the fallback correct rather than merely safe. That window is a moment at
+    startup, and the push on connect corrects any page that loaded inside it.
+    """
+    manager = twitchbot.tts_manager if twitchbot is not None else None
+    state = {}
+    for number, config in PLAYER_CONFIG.items():
+        player = twitchbot.players.get(number) if twitchbot is not None else None
+        voice = manager.voices.get(number) if manager is not None else None
+        state[number] = {
+            "tts_enabled": player.tts_enabled if player else True,
+            "current_user": (player.current_user if player else None) or "",
+            "voice_name": voice["name"] if voice else config["voice_name"],
+            "voice_style": voice["style"] if voice else DEFAULT_VOICE_STYLE,
+        }
+    return state
+
+
 @app.route("/")
 def home():
     return redirect(url_for("control"))
@@ -188,7 +221,8 @@ def control():
                            styles=STYLE_OPTIONS,
                            voice_styles=VOICE_STYLE_MAP,
                            voices_source=VOICES_SOURCE,
-                           default_style=DEFAULT_VOICE_STYLE)
+                           default_style=DEFAULT_VOICE_STYLE,
+                           state=player_state())
 
 
 @app.route("/overlay")
@@ -226,7 +260,7 @@ def overlay():
 @socketio.event
 def connect():
     """
-    Log the connection and nothing more.
+    Log the connection, and send the new client the current state.
 
     This used to broadcast a placeholder message_send ("Temp User" saying
     "Connected successfully!") pinned to player 1. Harmless when the only client
@@ -236,9 +270,17 @@ def connect():
     every client, so opening the control panel did it too.
 
     The control page has its own connection indicator driven by socket.io's own
-    connect event, so nothing needs this.
+    connect event, so it doesn't need one from us.
+
+    The state push that replaced it is deliberately the opposite shape: emit()
+    inside a connect handler goes to the client that just connected and nobody
+    else, so the overlay pages are untouched and no other panel is disturbed. It
+    covers a panel that rendered before the bot thread was ready, and it resyncs a
+    page after a reconnect instead of leaving it showing whatever it had when the
+    socket dropped.
     """
     print("Socket client connected.")
+    emit('state', player_state())
 
 
 def _player_from(value):
