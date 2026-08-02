@@ -16,15 +16,13 @@ import uuid
 
 from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALOG,
                                   VOICES_SOURCE, styles_for)
+from config import legacy_in_use, missing_required, set_command, setting, startup_report
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
 
-# Set TWITCH_CHANNEL_NAME as an environment variable alongside the other three.
-# The fallback keeps existing installs working, but setting the variable means
-# setup is four env vars and no source edits -- and keeps the channel name out of
-# a public repo. Lowercased because twitchio matches channels case-sensitively
-# and the common mistake is typing the display name.
-TWITCH_CHANNEL_NAME = os.getenv('TWITCH_CHANNEL_NAME', 'silverstagvt').strip().lower()
+# Every setting resolves through config.py: CHATGOD_-prefixed variable, then the
+# legacy unprefixed name, then a built-in default. See that module for why.
+TWITCH_CHANNEL_NAME = setting('twitch_channel')
 
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode="threading")
@@ -380,7 +378,7 @@ class Bot(commands.Bot):
         self._pool_lock = threading.Lock()
 
         #connects to twitch channel
-        super().__init__(token=os.getenv('TWITCH_ACCESS_TOKEN'), prefix='?', initial_channels=[TWITCH_CHANNEL_NAME])
+        super().__init__(token=setting('twitch_token'), prefix='?', initial_channels=[TWITCH_CHANNEL_NAME])
 
     async def event_ready(self):
         print(f'Logged in as | {self.nick}')
@@ -472,15 +470,29 @@ def startTwitchBot(tts_manager, speech_worker):
 
 if __name__=='__main__':
 
-    if not os.getenv('TWITCH_CHANNEL_NAME'):
-        print(f"\nTWITCH_CHANNEL_NAME isn't set -- reading #{TWITCH_CHANNEL_NAME}.\n"
-              "  Set it alongside your other environment variables:\n"
-              '  [Environment]::SetEnvironmentVariable("TWITCH_CHANNEL_NAME", '
-              '"yourchannel", "User")\n'
-              "  then reopen the terminal.")
-    if not os.getenv('TWITCH_ACCESS_TOKEN'):
-        print("\nTWITCH_ACCESS_TOKEN isn't set. The bot won't be able to log in.\n"
-              "  If you set it recently, reopen the terminal -- environment variables\n"
+    # Configuration first, before anything slow or noisy, so a missing variable is
+    # the first thing on screen rather than something to scroll back for.
+    print("\nConfiguration:")
+    for line in startup_report():
+        print(line)
+
+    # One block however many are legacy. Repeating the same paragraph four times
+    # is how a useful warning becomes something you learn to scroll past.
+    legacy = legacy_in_use()
+    if legacy:
+        print(f"\n{len(legacy)} setting{'s' if len(legacy) > 1 else ''} still using the older "
+              "unprefixed variable name:")
+        for prefixed, old in legacy:
+            print(f"  {old} -> {prefixed}")
+        print("  These work. The prefix exists because names like AZURE_TTS_KEY are ones\n"
+              "  another tool could also be using, and a clash looks like a bad key rather\n"
+              "  than a name collision. Switch when convenient:\n"
+              f"  {set_command(legacy[0][0], 'value')}")
+
+    missing = missing_required()
+    if missing:
+        print(f"\nNot set: {', '.join(missing)}.\n"
+              "  If you set them recently, reopen the terminal -- environment variables\n"
               "  don't reach shells that were already open.")
 
     tts_manager = TTSManager()

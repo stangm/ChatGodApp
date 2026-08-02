@@ -38,6 +38,8 @@ import sys
 
 import azure.cognitiveservices.speech as speechsdk
 
+from config import setting
+
 OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voices.json")
 DEFAULT_LOCALES = ["en"]          # every English locale, not just en-US
 
@@ -107,9 +109,10 @@ def classify(short_name):
 
 
 def fetch(locales, keep_all=False, include_premium=False):
-    key, region = os.getenv("AZURE_TTS_KEY"), os.getenv("AZURE_TTS_REGION")
+    key, region = setting("azure_key"), setting("azure_region")
     if not key or not region:
-        sys.exit("AZURE_TTS_KEY and AZURE_TTS_REGION must be set. "
+        sys.exit("CHATGOD_AZURE_KEY and CHATGOD_AZURE_REGION must be set (the older "
+                 "AZURE_TTS_KEY / AZURE_TTS_REGION are still read as a fallback). "
                  "Reopen your terminal if you only just set them.")
 
     config = speechsdk.SpeechConfig(subscription=key, region=region)

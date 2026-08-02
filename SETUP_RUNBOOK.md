@@ -13,7 +13,7 @@ If you've set this up before, use the README and skip this.
 1. **Environment variables don't reach terminals that are already open.** You'll set three of them
    below. Each time, close PowerShell and reopen it. This is the single most common "it worked for
    everyone else" failure, and it looks exactly like a bad token.
-2. **Forgetting `TWITCH_CHANNEL_NAME`** means the bot reads someone else's chat and ignores you
+2. **Forgetting `CHATGOD_TWITCH_CHANNEL`** means the bot reads someone else's chat and ignores you
    entirely. It falls back to a hardcoded channel when the variable is unset, and warns loudly at
    startup — read the first few lines of output.
 3. **Testing the overlay in a normal browser tab gives you silence.** Chrome and Firefox block
@@ -75,6 +75,15 @@ You only hit that path when Azure fails — which is exactly when you don't want
 
 ## Stage 2 — Twitch
 
+> **Already have the old variables set?** Leave them. The unprefixed names —
+> `TWITCH_ACCESS_TOKEN`, `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION` — are still read
+> as a fallback, so an existing install keeps working and you can migrate whenever. The app names
+> every legacy variable it falls back to at startup.
+>
+> The prefix is there because those names are ones any other Twitch or Azure tool would plausibly
+> also pick. If one does, whichever tool reads the variable gets the other's credentials, and the
+> failure looks like a bad key rather than a name clash — which is a bad thing to debug mid-stream.
+
 **2.1 Generate an access token** at <https://twitchtokengenerator.com/>. Choose *Bot Chat Token*, and
 make sure **`chat:read`** and **`chat:edit`** are both enabled. Copy the **Access Token** (not the
 refresh token).
@@ -82,7 +91,7 @@ refresh token).
 **2.2 Set it as an environment variable.** Permanent, so it survives reboots:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("TWITCH_ACCESS_TOKEN", "yourtokenhere", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_TOKEN", "yourtokenhere", "User")
 ```
 
 Paste the token exactly as the generator gave it. The `oauth:` prefix doesn't matter either way —
@@ -92,7 +101,7 @@ prefixed tokens are identical on the wire. **Close and reopen PowerShell** (gotc
 **2.3 Point the bot at your channel.** Also an environment variable — no source file to edit:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("TWITCH_CHANNEL_NAME", "yourchannel", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_CHANNEL", "yourchannel", "User")
 ```
 
 Your channel, no URL and no `@`. Case doesn't matter; the app lowercases it, because twitchio
@@ -103,7 +112,7 @@ Reopen PowerShell again.
 **Check:** both variables should come back non-empty:
 
 ```powershell
-python -c "import os; print(os.getenv('TWITCH_ACCESS_TOKEN','')[:10], os.getenv('TWITCH_CHANNEL_NAME'))"
+python -c "from config import setting; print(setting('twitch_token')[:10], setting('twitch_channel'))"
 ```
 
 If either prints empty or `None`, the terminal predates the variable. The app also warns at startup
@@ -123,8 +132,8 @@ search **Speech** → Create. Pick any region near you and select pricing tier *
 display name ("East US"):
 
 ```powershell
-[Environment]::SetEnvironmentVariable("AZURE_TTS_KEY", "your-key-here", "User")
-[Environment]::SetEnvironmentVariable("AZURE_TTS_REGION", "eastus", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_KEY", "your-key-here", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_REGION", "eastus", "User")
 ```
 
 Reopen PowerShell again.
@@ -269,8 +278,8 @@ If step 3 gives you text but no sound, check you're listening to OBS and not a b
 | Symptom | Cause |
 |---|---|
 | No `Logged in as` line | Token missing/expired, or the terminal was open before you set the env var |
-| Bot connects but ignores you | `TWITCH_CHANNEL_NAME` still wrong, or wrong case |
-| "Azure failed, using gTTS instead" | Bad `AZURE_TTS_KEY`, or region as "East US" instead of `eastus` |
+| Bot connects but ignores you | `CHATGOD_TWITCH_CHANNEL` still wrong, or wrong case |
+| "Azure failed, using gTTS instead" | Bad `CHATGOD_AZURE_KEY`, or region as "East US" instead of `eastus` |
 | Nothing happens on **Pick Random** | Empty pool — someone must type `!player1` first. The code silently swallows this |
 | Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page and its errors |
 | Overlay shows text but never speaks | You're listening to a browser tab, not OBS (gotcha #3), or the source is muted in OBS's Audio Mixer |

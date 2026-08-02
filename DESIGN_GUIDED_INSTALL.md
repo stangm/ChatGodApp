@@ -169,8 +169,20 @@ everything.
 still read and still win, so existing installs and anyone who prefers them are unaffected.
 
 ```
-resolution order:  environment variable  →  config.json  →  built-in default
+resolution order:  CHATGOD_ variable  →  legacy variable  →  config.json  →  built-in default
 ```
+
+**The first, second and fourth layers exist now**, in `config.py`. Variables are `CHATGOD_`-prefixed,
+with the old unprefixed names kept as a fallback so no existing install breaks; `setting()` is the
+single read point, so adding `config.json` is one function in one file rather than an edit to three
+modules that then have to agree.
+
+Worth noting what the legacy layer costs: a stale `AZURE_TTS_KEY` left over from another tool will
+beat a deliberately-written `config.json`, which is the opposite of what you'd want on a machine you
+pre-configured for someone. Demoting legacy below `config.json` would fix that but breaks the plain
+rule that variables win over files. The chosen compromise is to keep the simple order and make the
+fallback loud — startup names every legacy variable in use, so a collision is visible rather than
+silent. Revisit if it ever actually bites.
 
 That keeps the current behaviour as a superset and makes the wizard possible. `config.json` holds the
 Twitch token and channel, Azure key and region — so it's secret, gitignored, and worth saying so in
@@ -256,6 +268,11 @@ building now; everything after waits for a reason to exist.
 
 **A. `config.json` with env-var precedence.** No UI. Lets you hand over a pre-configured install and
 removes environment variables from her life entirely. Foundation for everything else.
+
+> **Half done.** `config.py` now owns every setting read, with the `CHATGOD_` prefix and legacy
+> fallback in place. What remains is the `config.json` layer itself: where the file lives, that it's
+> gitignored, and what happens on a malformed one (log and fall through to defaults, matching how
+> `characters.json` is specced).
 
 **B. Launcher script.** Finds Python, builds the venv, installs deps, starts the app, opens the
 browser. No terminal, no activation policy, no wrong-venv confusion. Best return per hour of anything

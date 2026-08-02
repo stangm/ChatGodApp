@@ -64,8 +64,8 @@ Generate a token at <https://twitchtokengenerator.com/> — choose **Bot Chat To
 **`chat:read`** and **`chat:edit`** enabled. Copy the *Access Token*, not the refresh token.
 
 ```powershell
-[Environment]::SetEnvironmentVariable("TWITCH_ACCESS_TOKEN", "yourtokenhere", "User")
-[Environment]::SetEnvironmentVariable("TWITCH_CHANNEL_NAME", "yourchannel", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_TOKEN", "yourtokenhere", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_CHANNEL", "yourchannel", "User")
 ```
 
 The channel name is your channel, no URL and no `@` — case doesn't matter, it gets lowercased.
@@ -73,8 +73,14 @@ The channel name is your channel, no URL and no `@` — case doesn't matter, it 
 **Close and reopen your terminal** — environment variables don't reach already-open shells. This is
 the single most common "it works for everyone else" failure.
 
-**Check:** `python -c "import os; print(os.getenv('TWITCH_ACCESS_TOKEN')[:10])"` should print
-characters, not `None`.
+**Check:** `python -c "from config import setting; print(setting('twitch_token')[:10])"` should print
+characters, not an error.
+
+> **Upgrading from an older copy?** The unprefixed names — `TWITCH_ACCESS_TOKEN`,
+> `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION` — are still read, so nothing you've
+> already set breaks. The prefix exists because those names are ones any other Twitch or Azure tool
+> would plausibly also use, and a collision hands your app someone else's credentials while looking
+> like a bad key. The app names any legacy variable it falls back to at startup.
 
 ### 3. Azure Speech
 
@@ -85,8 +91,8 @@ Copy Key 1 and the Region from *Keys and Endpoint*. The region must be the short
 (`eastus`, `westus2`), **not** the display name:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("AZURE_TTS_KEY", "your-key-here", "User")
-[Environment]::SetEnvironmentVariable("AZURE_TTS_REGION", "eastus", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_KEY", "your-key-here", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_REGION", "eastus", "User")
 ```
 
 Reopen the terminal again, then test Azure on its own:
@@ -239,8 +245,8 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 | Symptom | Cause |
 |---|---|
 | No `Logged in as` line | Token missing or expired, or the terminal was open before you set the env var |
-| Bot connects but ignores you | `TWITCH_CHANNEL_NAME` is wrong or wrong case |
-| "Azure failed, using gTTS instead" | Bad `AZURE_TTS_KEY`, or region as "East US" instead of `eastus` |
+| Bot connects but ignores you | `CHATGOD_TWITCH_CHANNEL` is wrong or wrong case |
+| "Azure failed, using gTTS instead" | Bad `CHATGOD_AZURE_KEY`, or region as "East US" instead of `eastus` |
 | Nothing on **Pick Random** | Pool is empty — someone must type `!player1` first |
 | Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page |
 | Text appears, no audio | Check the browser source isn't muted in OBS's Audio Mixer |
@@ -254,7 +260,9 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 
 | | |
 |---|---|
+| `PROJECT-STATE.md` | Where the project currently stands — what works, what's in flight, what wastes your time. Start here if you're picking the project back up |
 | `chat_god_app.py` | Flask app, Twitch bot, socket handlers, routes |
+| `config.py` | Resolves every setting: `CHATGOD_` variable, then the legacy name, then a default |
 | `players.py` | Player config — the only file you edit to add or retune a player |
 | `voices_manager.py` | Voice state per player, synthesis calls |
 | `azure_text_to_speech.py` | Azure TTS with a gTTS fallback, and the voice/style catalog |

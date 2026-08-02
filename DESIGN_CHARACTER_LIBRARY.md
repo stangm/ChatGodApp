@@ -324,18 +324,21 @@ env-var change already carried its own: both docs now list four variables and no
 
 ## Decided
 
-### `TWITCH_CHANNEL_NAME` becomes a fourth environment variable — **done**
+### The channel name becomes a fourth environment variable — **done**
 
 Install-time configuration, not something the web UI touches — it's set once per install, not per
 stream, so it doesn't belong in a character file either.
 
 ```python
-TWITCH_CHANNEL_NAME = os.getenv('TWITCH_CHANNEL_NAME', 'silverstagvt')
+TWITCH_CHANNEL_NAME = setting('twitch_channel')   # CHATGOD_TWITCH_CHANNEL
 ```
 
 Keeping the current value as the fallback means existing installs keep working. Setup becomes "set
 four environment variables" with no `.py` edit at all, replacing "set three, then edit line 21."
 It also keeps the channel name out of a public repo.
+
+All four variables since moved behind `config.py` and gained the `CHATGOD_` prefix, with the
+unprefixed names still read as a fallback. See the guided-install design for the resolution order.
 
 ### Deleting a character removes the library entry, not the art
 
