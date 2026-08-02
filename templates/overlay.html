@@ -1,0 +1,200 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Chat God Overlay</title>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/overlay.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js" integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ==" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery-textfill@0.6.0/source/jquery.textfill.min.js"></script>
+
+    <script type="text/javascript" charset="utf-8">
+        // Players rendered on THIS page. With ?player=2 it's just ["2"].
+        var PLAYERS = {{ numbers | tojson }};
+
+        // How loud the clip has to be before the mouth counts as open. Raise it if
+        // the mouth barely closes, lower it if it barely opens.
+        var OPEN_THRESHOLD = 0.06;
+
+        // Minimum ms between mouth swaps. Without this the mouth strobes on every
+        // animation frame and reads as cheap rather than as speech.
+        var MIN_HOLD_MS = 60;
+
+        // Used only when WebAudio is unavailable: a plain on/off flap.
+        var FALLBACK_FLAP_MS = 140;
+
+        $(document).ready(function() {
+            var socket = io();
+
+            function refit() {
+                PLAYERS.forEach(function(n) {
+                    $('#user-name-box-' + n).textfill({
+                        minFontPixels: 2, maxFontPixels: 50, explicitHeight: 60
+                    });
+                    $('#user-message-box-' + n).textfill({
+                        minFontPixels: 2, maxFontPixels: 30
+                    });
+                });
+            }
+
+            function titleCase(name) {
+                if (!name) return '';
+                return name[0].toUpperCase() + name.substr(1);
+            }
+
+            function setMouth(number, open) {
+                $('#player-slot-' + number).toggleClass('talking', open);
+            }
+
+            socket.on('message_send', function(msg) {
+                if (PLAYERS.indexOf(msg.user_number) === -1) return;
+                $('#user-message-' + msg.user_number).text(msg.message);
+                $('#user-name-' + msg.user_number).text(titleCase(msg.current_user));
+                refit();
+            });
+
+            // ---- audio + lip sync -----------------------------------------
+
+            var audioCtx = null;
+            function ensureContext() {
+                if (audioCtx !== null) return audioCtx;
+                try {
+                    var Ctx = window.AudioContext || window.webkitAudioContext;
+                    audioCtx = new Ctx();
+                    if (audioCtx.state === 'suspended') audioCtx.resume();
+                } catch (e) {
+                    console.log('WebAudio unavailable, falling back to timed flap');
+                    audioCtx = false;
+                }
+                return audioCtx;
+            }
+
+            var pending = [];
+            var playing = false;
+
+            function playNext() {
+                if (playing || pending.length === 0) return;
+                playing = true;
+
+                var item = pending.shift();
+                var number = item.user_number;
+                var audio = new Audio(item.audio_url);
+                var stop = null;
+
+                function done() {
+                    if (stop) { stop(); stop = null; }
+                    setMouth(number, false);   // always land closed
+                    playing = false;
+                    playNext();
+                }
+
+                audio.addEventListener('ended', done);
+                audio.addEventListener('error', function() {
+                    console.log('Could not play ' + item.audio_url);
+                    done();
+                });
+
+                var ctx = ensureContext();
+                if (ctx && ctx.state === 'running') {
+                    stop = driveFromWaveform(ctx, audio, number);
+                } else {
+                    stop = driveOnTimer(number);
+                }
+
+                audio.play().catch(function(err) {
+                    // Autoplay blocked. Happens in a normal browser tab; OBS allows it.
+                    console.log('Autoplay blocked: ' + err.name);
+                    done();
+                });
+            }
+
+            // Real lip sync: mouth follows the amplitude of the clip being played.
+            function driveFromWaveform(ctx, audio, number) {
+                var source = ctx.createMediaElementSource(audio);
+                var analyser = ctx.createAnalyser();
+                analyser.fftSize = 512;
+                source.connect(analyser);
+                analyser.connect(ctx.destination);   // still has to reach the speakers
+
+                var samples = new Uint8Array(analyser.frequencyBinCount);
+                var open = false;
+                var lastSwap = 0;
+                var running = true;
+
+                function frame(now) {
+                    if (!running) return;
+                    analyser.getByteTimeDomainData(samples);
+
+                    var sum = 0;
+                    for (var i = 0; i < samples.length; i++) {
+                        var d = samples[i] - 128;
+                        sum += d * d;
+                    }
+                    var level = Math.sqrt(sum / samples.length) / 128;
+
+                    if (now - lastSwap > MIN_HOLD_MS) {
+                        var wantOpen = level > OPEN_THRESHOLD;
+                        if (wantOpen !== open) {
+                            open = wantOpen;
+                            lastSwap = now;
+                            setMouth(number, open);
+                        }
+                    }
+                    requestAnimationFrame(frame);
+                }
+                requestAnimationFrame(frame);
+
+                return function() { running = false; };
+            }
+
+            // Fallback: no waveform available, so just flap while the clip plays.
+            function driveOnTimer(number) {
+                var open = false;
+                var id = setInterval(function() {
+                    open = !open;
+                    setMouth(number, open);
+                }, FALLBACK_FLAP_MS);
+                return function() { clearInterval(id); };
+            }
+
+            socket.on('speak', function(msg) {
+                if (PLAYERS.indexOf(msg.user_number) === -1) return;
+                pending.push(msg);
+                playNext();
+            });
+
+            // A character image that isn't there shouldn't show a broken-image icon.
+            $('img.character-art').on('error', function() { $(this).css('display', 'none'); });
+
+            refit();
+        });
+    </script>
+</head>
+<body>
+
+    <div class="overlay-row">
+        {% for n in numbers %}
+        <div class="player-slot" id="player-slot-{{ n }}">
+
+            <div class="character">
+                <img class="character-art mouth-closed" src="{{ images[n].closed }}" alt="">
+                <img class="character-art mouth-open"   src="{{ images[n].open }}"   alt="">
+            </div>
+
+            <div class="user-name-box" id="user-name-box-{{ n }}">
+                <span class="user-name" id="user-name-{{ n }}">&nbsp;</span>
+            </div>
+            <div class="user-message-box" id="user-message-box-{{ n }}">
+                <span class="user-message" id="user-message-{{ n }}">&nbsp;</span>
+            </div>
+
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+</html>

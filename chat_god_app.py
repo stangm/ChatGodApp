@@ -1,102 +1,254 @@
 from twitchio.ext import commands
 from twitchio import *
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from flask import Flask, render_template, session, request
-from flask_socketio import SocketIO, emit
+from typing import Dict, Optional
+from collections import OrderedDict
+from flask import Flask, abort, redirect, render_template, request, send_file, url_for
+from flask_socketio import SocketIO
 import asyncio
+import queue
 import threading
 import pytz
-import random 
+import random
 import os
+import uuid
+
+from azure_text_to_speech import AZURE_VOICES, AZURE_VOICE_STYLES
+from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
 
-TWITCH_CHANNEL_NAME = 'dougdoug' # Replace this with your channel name
+TWITCH_CHANNEL_NAME = 'silverstagvt' # Replace this with your channel name
 
-socketio = SocketIO
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode="threading")
 print(socketio.async_mode)
- 
+
+# Set once the bot thread has constructed the Bot. Socket events can arrive before
+# that happens, so every handler checks it.
+twitchbot = None
+
+
+# ---------------------------------------------------------------------------
+# Generated audio, served to the overlay over HTTP
+# ---------------------------------------------------------------------------
+
+AUDIO_CACHE_SIZE = 50           # clips kept on disk before the oldest are deleted
+_audio_cache = OrderedDict()    # token -> wav path
+_audio_lock = threading.Lock()
+
+
+def register_audio(path):
+    """Publish a wav under a one-off token and return it."""
+    token = uuid.uuid4().hex
+    with _audio_lock:
+        _audio_cache[token] = path
+        while len(_audio_cache) > AUDIO_CACHE_SIZE:
+            _, stale = _audio_cache.popitem(last=False)
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
+    return token
+
+
+@app.route("/audio/<token>.wav")
+def audio_file(token):
+    with _audio_lock:
+        path = _audio_cache.get(token)
+    if not path or not os.path.exists(path):
+        abort(404)
+    return send_file(path, mimetype="audio/wav")
+
+
+class SpeechWorker:
+    """
+    Synthesis on its own thread.
+
+    Azure round-trips take a few hundred milliseconds and used to happen inline in
+    the twitchio handler, so the bot stopped reading chat while it waited. One
+    worker keeps clips in order without ever blocking the bot.
+    """
+
+    def __init__(self, tts_manager):
+        self.tts_manager = tts_manager
+        self._queue = queue.Queue()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def submit(self, number, speaker, text):
+        self._queue.put((number, speaker, text))
+
+    def _run(self):
+        while True:
+            number, speaker, text = self._queue.get()
+            try:
+                path = self.tts_manager.synthesize(text, number)
+                if path:
+                    socketio.emit('speak', {
+                        'user_number': number,
+                        'current_user': speaker,
+                        'audio_url': f"/audio/{register_audio(path)}.wav",
+                    })
+            except Exception as exc:
+                print(f"TTS failed for player {number}: {exc}")
+            finally:
+                self._queue.task_done()
+
+
+def _voice_label(voice_id):
+    """'en-US-DavisNeural' -> 'Davis' for the dropdown."""
+    name = voice_id.split("-")[-1]
+    return name[:-len("Neural")] if name.endswith("Neural") else name
+
+
+# Built from the same lists the TTS code uses, so the dropdowns can't drift out of
+# sync with what Azure will actually accept.
+VOICE_OPTIONS = [(voice, _voice_label(voice)) for voice in AZURE_VOICES]
+STYLE_OPTIONS = ["random"] + list(AZURE_VOICE_STYLES)
+
+
 @app.route("/")
 def home():
-    return render_template('index.html') #redirects to index.html in templates folder
+    return redirect(url_for("control"))
+
+
+@app.route("/control")
+def control():
+    """Operator dashboard. Open in a normal browser -- never add this to OBS."""
+    return render_template('control.html',
+                           players=PLAYER_CONFIG,
+                           voices=VOICE_OPTIONS,
+                           styles=STYLE_OPTIONS,
+                           default_style=DEFAULT_VOICE_STYLE)
+
+
+@app.route("/overlay")
+def overlay():
+    """
+    On-stream graphic. Add to OBS as a Browser source.
+
+    /overlay             -> every player in a row (matches the old layout)
+    /overlay?player=2    -> just that player, so each can be positioned separately
+    """
+    requested = request.args.get("player")
+    if requested is None:
+        numbers = list(PLAYER_CONFIG)
+    elif requested in PLAYER_CONFIG:
+        numbers = [requested]
+    else:
+        abort(404, f"Unknown player {requested!r}. Configured: {', '.join(PLAYER_CONFIG)}")
+
+    # Convention: static/characters/player<N>-closed.png and -open.png.
+    # A player entry can override with "image_closed" / "image_open" if the files
+    # live somewhere else under static/.
+    images = {}
+    for number in numbers:
+        config = PLAYER_CONFIG[number]
+        images[number] = {
+            "closed": url_for('static', filename=config.get(
+                "image_closed", f"characters/player{number}-closed.png")),
+            "open": url_for('static', filename=config.get(
+                "image_open", f"characters/player{number}-open.png")),
+        }
+
+    return render_template('overlay.html', numbers=numbers, images=images)
+
 
 @socketio.event
 def connect(): #when socket connects, send data confirming connection
     socketio.emit('message_send', {'message': "Connected successfully!", 'current_user': "Temp User", 'user_number': "1"})
 
+
+def _player_from(value):
+    """
+    Resolve the Player a socket payload refers to, or None if it can't be resolved.
+
+    Guards three things the browser could send: an event before the bot has started,
+    a payload that isn't a dict, and an unknown player number.
+    """
+    if twitchbot is None:
+        print("Socket event arrived before the Twitch bot was ready; ignoring.")
+        return None
+    number = value.get('user_number') if isinstance(value, dict) else None
+    player = twitchbot.players.get(number)
+    if player is None:
+        print(f"Socket event for unknown player {number!r}; ignoring.")
+    return player
+
+
 @socketio.on("tts")
 def toggletts(value):
-    print("TTS: Received the value " + str(value['checked']))
-    if value['user_number'] == "1":
-        twitchbot.tts_enabled_1 = value['checked']
-    elif value['user_number'] == "2":
-        twitchbot.tts_enabled_2 = value['checked']
-    elif value['user_number'] == "3":
-        twitchbot.tts_enabled_3 = value['checked']
+    player = _player_from(value)
+    if player is None:
+        return
+    player.tts_enabled = bool(value.get('checked'))
+    print(f"TTS for player {player.number}: {player.tts_enabled}")
+
 
 @socketio.on("pickrandom")
 def pickrandom(value):
-    twitchbot.randomUser(value['user_number'])
-    print("Getting new random user for user " + value['user_number'])
+    player = _player_from(value)
+    if player is None:
+        return
+    twitchbot.random_user(player.number)
+
 
 @socketio.on("choose")
 def chooseuser(value):
-    if value['user_number'] == "1":
-        twitchbot.current_user_1 = value['chosen_user'].lower()
-        socketio.emit('message_send',
-            {'message': f"{twitchbot.current_user_1} was picked!",
-            'current_user': f"{twitchbot.current_user_1}",
-            'user_number': value['user_number']})
-    elif value['user_number'] == "2":
-        twitchbot.current_user_2 = value['chosen_user'].lower()
-        socketio.emit('message_send',
-            {'message': f"{twitchbot.current_user_2} was picked!",
-            'current_user': f"{twitchbot.current_user_2}",
-            'user_number': value['user_number']})
-    elif value['user_number'] == "3":
-        twitchbot.current_user_3 = value['chosen_user'].lower()
-        socketio.emit('message_send',
-            {'message': f"{twitchbot.current_user_3} was picked!",
-            'current_user': f"{twitchbot.current_user_3}",
-            'user_number': value['user_number']})
+    player = _player_from(value)
+    if player is None:
+        return
+    chosen = (value.get('chosen_user') or "").strip().lower()
+    if not chosen:
+        return
+    player.current_user = chosen
+    twitchbot.announce(player, f"{chosen} was picked!")
+
 
 @socketio.on("voicename")
 def choose_voice_name(value):
-    if (value['voice_name']) != None:
-        twitchbot.update_voice_name(value['user_number'], value['voice_name'])
-        print("Updating voice name to: " + value['voice_name'])
+    player = _player_from(value)
+    if player is None or not value.get('voice_name'):
+        return
+    twitchbot.tts_manager.update_voice_name(player.number, value['voice_name'])
+
 
 @socketio.on("voicestyle")
 def choose_voice_style(value):
-    if (value['voice_style']) != None:
-        twitchbot.update_voice_style(value['user_number'], value['voice_style'])
-        print("Updating voice style to: " + value['voice_style'])
+    player = _player_from(value)
+    if player is None or not value.get('voice_style'):
+        return
+    twitchbot.tts_manager.update_voice_style(player.number, value['voice_style'])
+
+
+@dataclass
+class Player:
+    number: str                                              # "1", "2", ... matches socket payloads
+    keyphrase: str                                           # what a viewer types to join this pool
+    current_user: Optional[str] = None                       # whose messages get read out
+    tts_enabled: bool = True
+    pool: Dict[str, datetime] = field(default_factory=dict)  # username -> when they last opted in
 
 
 class Bot(commands.Bot):
-    current_user_1 = None
-    current_user_2 = None
-    current_user_3 = None
-    tts_enabled_1 = True
-    tts_enabled_2 = True
-    tts_enabled_3 = True
-    keypassphrase_1 = "!player1"
-    keypassphrase_2 = "!player2"
-    keypassphrase_3 = "!player3"
-    user_pool_1 = {} #dict of username and time last chatted
-    user_pool_2 = {} #dict of username and time last chatted
-    user_pool_3 = {} #dict of username and time last chatted
-    seconds_active = 450 # of seconds until a chatter is booted from the list
-    max_users = 2000 # of users who can be in user pool
-    tts_manager = None
+    seconds_active = 450  # seconds of silence before a chatter is dropped from a pool
+    max_users = 2000      # hard cap on pool size
 
-    def __init__(self):
-        self.tts_manager = TTSManager()
+    def __init__(self, tts_manager, speech_worker):
+        # Instance state, not class attributes. As class attributes these were shared
+        # across every instance, which is a latent bug even if only one Bot exists.
+        self.players = {
+            number: Player(number=number, keyphrase=config["keyphrase"])
+            for number, config in PLAYER_CONFIG.items()
+        }
+        self.tts_manager = tts_manager
+        self.speech_worker = speech_worker
+        # Pools are written on the twitchio thread and read on the Flask thread.
+        self._pool_lock = threading.Lock()
 
         #connects to twitch channel
         super().__init__(token=os.getenv('TWITCH_ACCESS_TOKEN'), prefix='?', initial_channels=[TWITCH_CHANNEL_NAME])
-    
+
     async def event_ready(self):
         print(f'Logged in as | {self.nick}')
         print(f'User id is | {self.user_id}')
@@ -104,119 +256,100 @@ class Bot(commands.Bot):
     async def event_message(self, message):
         await self.process_message(message)
 
+    def announce(self, player: Player, text: str):
+        """The single place the overlay's socket payload shape is defined."""
+        socketio.emit('message_send',
+            {'message': text,
+            'current_user': player.current_user,
+            'user_number': player.number})
+
     async def process_message(self, message: Message):
-        # print("We got a message from this person: " + message.author.name)
-        # print("Their message was " + message.content)
+        author = message.author.name.lower()
 
-        # If this is our current_user, read out their message
-        if message.author.name == self.current_user_1:
-            socketio.emit('message_send',
-                {'message': f"{message.content}",
-                'current_user': f"{self.current_user_1}",
-                'user_number': "1"})
-            if self.tts_enabled_1:
-                self.tts_manager.text_to_audio(message.content, "1")
-        elif message.author.name == self.current_user_2:
-            socketio.emit('message_send',
-                {'message': f"{message.content}",
-                'current_user': f"{self.current_user_2}",
-                'user_number': "2"})
-            if self.tts_enabled_2:
-                self.tts_manager.text_to_audio(message.content, "2")
-        elif message.author.name == self.current_user_3:
-            socketio.emit('message_send',
-                {'message': f"{message.content}",
-                'current_user': f"{self.current_user_3}",
-                'user_number': "3"})
-            if self.tts_enabled_3:
-                self.tts_manager.text_to_audio(message.content, "3")
+        # If this is a current player, show and speak their message.
+        # The text goes out immediately; audio follows from the worker once Azure
+        # has rendered it, so neither step blocks the bot.
+        for player in self.players.values():
+            if player.current_user and author == player.current_user:
+                self.announce(player, message.content)
+                if player.tts_enabled:
+                    self.speech_worker.submit(player.number, player.current_user, message.content)
+                break
 
-        # Add this chatter to the user_pool
-        if message.content == self.keypassphrase_1:
-            if message.author.name.lower() in self.user_pool_1: # Remove this chatter from pool if they're already there
-                self.user_pool_1.pop(message.author.name.lower())
-            self.user_pool_1[message.author.name.lower()] = message.timestamp # Add user to end of pool with new msg time
-            # Now we remove the oldest viewer if they're past the activity threshold, or if we're past the max # of users
-            activity_threshold = datetime.now(pytz.utc) - timedelta(seconds=self.seconds_active) # calculate the cutoff time
-            oldest_user = list(self.user_pool_1.keys())[0] # The first user in the dict is the user who chatted longest ago
-            if self.user_pool_1[oldest_user].replace(tzinfo=pytz.utc) < activity_threshold or len(self.user_pool_1) > self.max_users:
-                self.user_pool_1.pop(oldest_user) # remove them from the list
-                if len(self.user_pool_1) == self.max_users:
-                    print(f"{oldest_user} was popped due to hitting max users")
-                else:
-                    print(f"{oldest_user} was popped due to not talking for {self.seconds_active} seconds")
-        elif message.content == self.keypassphrase_2:
-            if message.author.name.lower() in self.user_pool_2: # Remove this chatter from pool if they're already there
-                self.user_pool_2.pop(message.author.name.lower())
-            self.user_pool_2[message.author.name.lower()] = message.timestamp # Add user to end of pool with new msg time
-            # Now we remove the oldest viewer if they're past the activity threshold, or if we're past the max # of users
-            activity_threshold = datetime.now(pytz.utc) - timedelta(seconds=self.seconds_active) # calculate the cutoff time
-            oldest_user = list(self.user_pool_2.keys())[0] # The first user in the dict is the user who chatted longest ago
-            if self.user_pool_2[oldest_user].replace(tzinfo=pytz.utc) < activity_threshold or len(self.user_pool_2) > self.max_users:
-                self.user_pool_2.pop(oldest_user) # remove them from the list
-                if len(self.user_pool_2) == self.max_users:
-                    print(f"{oldest_user} was popped due to hitting max users")
-                else:
-                    print(f"{oldest_user} was popped due to not talking for {self.seconds_active} seconds")
-        elif message.content == self.keypassphrase_3:
-            if message.author.name.lower() in self.user_pool_3: # Remove this chatter from pool if they're already there
-                self.user_pool_3.pop(message.author.name.lower())
-            self.user_pool_3[message.author.name.lower()] = message.timestamp # Add user to end of pool with new msg time
-            # Now we remove the oldest viewer if they're past the activity threshold, or if we're past the max # of users
-            activity_threshold = datetime.now(pytz.utc) - timedelta(seconds=self.seconds_active) # calculate the cutoff time
-            oldest_user = list(self.user_pool_3.keys())[0] # The first user in the dict is the user who chatted longest ago
-            if self.user_pool_3[oldest_user].replace(tzinfo=pytz.utc) < activity_threshold or len(self.user_pool_3) > self.max_users:
-                self.user_pool_3.pop(oldest_user) # remove them from the list
-                if len(self.user_pool_3) == self.max_users:
-                    print(f"{oldest_user} was popped due to hitting max users")
-                else:
-                    print(f"{oldest_user} was popped due to not talking for {self.seconds_active} seconds")
-                
-                
-    #picks a random user from the queue
-    def randomUser(self, user_number):
-        try:
-            if user_number == "1":
-                self.current_user_1 = random.choice(list(self.user_pool_1.keys()))
-                socketio.emit('message_send',
-                    {'message': f"{self.current_user_1} was picked!",
-                    'current_user': f"{self.current_user_1}",
-                    'user_number': user_number})
-                print("Random User is: " + self.current_user_1)
-            elif user_number == "2":
-                self.current_user_2 = random.choice(list(self.user_pool_2.keys()))
-                socketio.emit('message_send',
-                    {'message': f"{self.current_user_2} was picked!",
-                    'current_user': f"{self.current_user_2}",
-                    'user_number': user_number})
-                print("Random User is: " + self.current_user_2)
-            elif user_number == "3":
-                self.current_user_3 = random.choice(list(self.user_pool_3.keys()))
-                socketio.emit('message_send',
-                    {'message': f"{self.current_user_3} was picked!",
-                    'current_user': f"{self.current_user_3}",
-                    'user_number': user_number})
-                print("Random User is: " + self.current_user_3)
-        except Exception:
+        # If this is a keyphrase, add the chatter to that player's pool
+        for player in self.players.values():
+            if message.content == player.keyphrase:
+                with self._pool_lock:
+                    player.pool.pop(author, None)          # re-insert so they land at the end
+                    player.pool[author] = message.timestamp
+                    self._prune(player)
+                break
+
+    def _prune(self, player: Player):
+        """
+        Drop everyone past the activity threshold, then enforce the size cap.
+
+        The original checked only the single oldest entry, so max_users could never
+        actually cap the pool and one stale entry blocked the next from being evicted.
+        Two loops, which is what the original's comments always claimed happened.
+
+        Callers hold self._pool_lock.
+        """
+        cutoff = datetime.now(pytz.utc) - timedelta(seconds=self.seconds_active)
+        pool = player.pool
+
+        while pool:
+            oldest = next(iter(pool))
+            if pool[oldest].replace(tzinfo=pytz.utc) >= cutoff:
+                break
+            pool.pop(oldest)
+            print(f"Player {player.number}: dropped {oldest} (idle over {self.seconds_active}s)")
+
+        while len(pool) > self.max_users:
+            oldest = next(iter(pool))
+            pool.pop(oldest)
+            print(f"Player {player.number}: dropped {oldest} (pool at max of {self.max_users})")
+
+    def random_user(self, user_number: str):
+        """Pick a random chatter from that player's pool."""
+        player = self.players.get(user_number)
+        if player is None:
             return
 
-    def update_voice_name(self, user_number, voice_name):
-        self.tts_manager.update_voice_name(user_number, voice_name)
+        with self._pool_lock:
+            candidates = list(player.pool)
 
-    def update_voice_style(self, user_number, voice_style):
-        self.tts_manager.update_voice_style(user_number, voice_style)
+        # An empty pool is the expected case, not an error. The original swallowed
+        # every exception here, which also hid genuine bugs.
+        if not candidates:
+            print(f"Player {user_number}: pool is empty (viewers join by typing {player.keyphrase})")
+            return
+
+        player.current_user = random.choice(candidates)
+        print(f"Player {user_number}: random user is {player.current_user}")
+        self.announce(player, f"{player.current_user} was picked!")
 
 
-def startTwitchBot():
+def startTwitchBot(tts_manager, speech_worker):
     global twitchbot
     asyncio.set_event_loop(asyncio.new_event_loop())
-    twitchbot = Bot()
+    twitchbot = Bot(tts_manager, speech_worker)
     twitchbot.run()
 
+
 if __name__=='__main__':
-    
+
+    tts_manager = TTSManager()
+    tts_manager.play_startup_chime()
+    speech_worker = SpeechWorker(tts_manager)
+
+    print(f"\nControl panel: http://127.0.0.1:5000/")
+    for number in PLAYER_CONFIG:
+        print(f"Overlay player {number}: http://127.0.0.1:5000/overlay?player={number}")
+    print()
+
     # Creates and runs the twitchio bot on a separate thread
-    bot_thread = threading.Thread(target=startTwitchBot)
+    bot_thread = threading.Thread(target=startTwitchBot, args=(tts_manager, speech_worker), daemon=True)
     bot_thread.start()
-    
+
     socketio.run(app)

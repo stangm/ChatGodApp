@@ -1,0 +1,127 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Chat God &mdash; Control Panel</title>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/control.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js" integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ==" crossorigin="anonymous"></script>
+
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function() {
+            var socket = io();
+
+            // One delegated handler per control type, keyed off data-player.
+            // The trailing '' coerces jQuery's numeric .data() back to the string
+            // the Python side keys on.
+            function player(el) { return $(el).closest('[data-player]').data('player') + ''; }
+
+            $('form.pickrandom').on('submit', function(e) {
+                e.preventDefault();
+                socket.emit('pickrandom', { user_number: player(this) });
+            });
+
+            $('input.tts-checkbox').on('change', function() {
+                socket.emit('tts', { user_number: player(this), checked: $(this).prop('checked') });
+            });
+
+            $('form.choose').on('submit', function(e) {
+                e.preventDefault();
+                var input = $(this).find('input.choose-input');
+                var name = input.val().trim();
+                if (!name) return;
+                socket.emit('choose', { user_number: player(this), chosen_user: name });
+                input.val('');
+            });
+
+            $('select.voicename').on('change', function() {
+                socket.emit('voicename', { user_number: player(this), voice_name: $(this).val() });
+            });
+
+            $('select.voicestyle').on('change', function() {
+                socket.emit('voicestyle', { user_number: player(this), voice_style: $(this).val() });
+            });
+
+            // Mirror the overlay so the operator can see who is assigned.
+            socket.on('message_send', function(msg) {
+                var name = msg.current_user || '(nobody)';
+                $('#assigned-' + msg.user_number).text(name);
+                $('#last-message-' + msg.user_number).text(msg.message);
+            });
+
+            socket.on('connect',    function() { $('#conn').text('connected').attr('class', 'ok'); });
+            socket.on('disconnect', function() { $('#conn').text('disconnected').attr('class', 'bad'); });
+        });
+    </script>
+</head>
+<body>
+
+    <header>
+        <h1>Chat God &mdash; Control Panel</h1>
+        <div class="status">server: <span id="conn" class="bad">connecting&hellip;</span></div>
+    </header>
+
+    <p class="hint">
+        This page is for you, not for stream. Add the overlay to OBS as a Browser source:
+        <code>http://127.0.0.1:5000/overlay?player=1</code> (one per player), or
+        <code>http://127.0.0.1:5000/overlay</code> for all of them in a row.
+    </p>
+
+    <div class="panels">
+        {% for number, config in players.items() %}
+        <section class="panel" data-player="{{ number }}">
+
+            <div class="panel-head">
+                <h2>Player {{ number }}</h2>
+                <code class="keyphrase">{{ config.keyphrase }}</code>
+            </div>
+
+            <div class="assigned">
+                <span class="label">assigned</span>
+                <span class="assigned-name" id="assigned-{{ number }}">(nobody)</span>
+            </div>
+
+            <form class="pickrandom">
+                <button type="submit">Pick Random</button>
+            </form>
+
+            <form class="choose">
+                <label>Choose user</label>
+                <input type="text" class="choose-input" placeholder="twitch username" autocomplete="off">
+            </form>
+
+            <label class="toggle">
+                <input type="checkbox" class="tts-checkbox" checked>
+                <span>Text to speech</span>
+            </label>
+
+            <label class="field">
+                <span class="label">Voice</span>
+                <select class="voicename">
+                    {% for value, display in voices %}
+                    <option value="{{ value }}" {% if value == config.voice_name %}selected{% endif %}>{{ display }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label class="field">
+                <span class="label">Style</span>
+                <select class="voicestyle">
+                    {% for value in styles %}
+                    <option value="{{ value }}" {% if value == default_style %}selected{% endif %}>{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <div class="last-message" id="last-message-{{ number }}"></div>
+
+        </section>
+        {% endfor %}
+    </div>
+
+</body>
+</html>

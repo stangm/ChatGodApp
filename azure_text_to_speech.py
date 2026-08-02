@@ -1,9 +1,17 @@
 import os
 import random
+import tempfile
+import uuid
 import azure.cognitiveservices.speech as speechsdk
 from gtts import gTTS
 from pydub import AudioSegment
 import pygame
+
+# Generated clips live outside the repo. The original wrote them to the working
+# directory with names built from hash(text), which is randomised per run -- so old
+# _Msg*.wav files piled up in the project folder and never matched on a later run.
+AUDIO_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "chatgod_audio")
+os.makedirs(AUDIO_OUTPUT_DIR, exist_ok=True)
 
 AZURE_VOICES = [
     "en-US-DavisNeural",
@@ -82,7 +90,7 @@ class AzureTTSManager:
         ssml_text = f"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xmlns:emo='http://www.w3.org/2009/10/emotionml' xml:lang='en-US'><voice name='{voice_name}'><mstts:express-as style='{voice_style}'>{text}</mstts:express-as></voice></speak>"
         result = self.azure_synthesizer.speak_ssml_async(ssml_text).get()
 
-        output = os.path.join(os.path.abspath(os.curdir), f"_Msg{str(hash(text))}{str(hash(voice_name))}{str(hash(voice_style))}.wav")
+        output = os.path.join(AUDIO_OUTPUT_DIR, f"_Msg{uuid.uuid4().hex}.wav")
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
             stream = speechsdk.AudioDataStream(result)
             stream.save_to_wav_file(output)
@@ -94,6 +102,10 @@ class AzureTTSManager:
             msgAudio.save(output_mp3)
             audiosegment = AudioSegment.from_mp3(output_mp3)
             audiosegment.export(output, format="wav")
+            try:
+                os.remove(output_mp3)   # the original left the intermediate mp3 behind
+            except OSError:
+                pass
 
         return output
 

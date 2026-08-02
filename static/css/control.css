@@ -1,0 +1,161 @@
+/*
+   Operator control panel. Never goes on stream, so it can be as dense as it likes.
+   Scales to any number of players -- the panels wrap rather than overflowing.
+*/
+
+:root {
+    --bg: hsl(250, 24%, 13%);
+    --panel: hsl(250, 20%, 19%);
+    --panel-edge: hsl(250, 16%, 30%);
+    --text: #d8d8e0;
+    --muted: #8f8fa3;
+    --accent: #79f1ff;
+    --ok: #5ad48a;
+    --bad: #e0705f;
+}
+
+* { box-sizing: border-box; font-family: 'Roboto', sans-serif; }
+
+body {
+    margin: 0;
+    padding: 20px 24px 40px;
+    background: var(--bg);
+    color: var(--text);
+}
+
+header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--panel-edge);
+    padding-bottom: 10px;
+}
+
+h1 { font-size: 22px; margin: 0; font-weight: 500; }
+
+.status { font-size: 13px; color: var(--muted); }
+.status .ok  { color: var(--ok); }
+.status .bad { color: var(--bad); }
+
+.hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 14px 0 22px;
+    line-height: 1.6;
+}
+
+code {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    color: var(--accent);
+}
+
+/* Wraps instead of overflowing, so 6 players works as well as 3 */
+.panels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+}
+
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 8px;
+    padding: 16px;
+    width: 260px;
+}
+
+.panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+h2 { font-size: 16px; margin: 0; font-weight: 500; }
+
+.keyphrase { font-size: 11px; }
+
+.assigned {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 14px;
+}
+
+.label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 3px;
+}
+
+.assigned-name {
+    font-size: 18px;
+    color: var(--accent);
+    word-break: break-all;
+}
+
+form { margin: 0 0 10px; }
+
+button {
+    width: 100%;
+    padding: 9px;
+    font-size: 14px;
+    color: var(--text);
+    background: hsl(250, 20%, 27%);
+    border: 1px solid var(--panel-edge);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+button:hover { background: hsl(250, 22%, 33%); }
+button:active { background: hsl(250, 22%, 24%); }
+
+form.choose label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 3px;
+}
+
+input[type="text"], select {
+    width: 100%;
+    padding: 7px 8px;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--panel-edge);
+    border-radius: 6px;
+}
+
+.toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    margin: 12px 0;
+    cursor: pointer;
+}
+
+.toggle input { width: 16px; height: 16px; cursor: pointer; }
+
+.field { display: block; margin-bottom: 10px; }
+
+.last-message {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--panel-edge);
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 30px;
+    word-break: break-word;
+}

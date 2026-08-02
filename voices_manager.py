@@ -1,65 +1,95 @@
-from audio_player import AudioManager
-from obs_websockets import OBSWebsocketsManager
 from azure_text_to_speech import AzureTTSManager
+from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE, OBS_WEBSOCKETS_ENABLED
+
 
 class TTSManager:
-    azuretts_manager = AzureTTSManager()
-    audio_manager = AudioManager()
-    obswebsockets_manager = OBSWebsocketsManager()
+    """
+    Turns text into a wav file. Does not play it.
 
-    user1_voice_name = "en-US-DavisNeural"
-    user1_voice_style = "random"
-    user2_voice_name = "en-US-TonyNeural"
-    user2_voice_style = "random"
-    user3_voice_name = "en-US-JaneNeural"
-    user3_voice_style = "random"
+    Playback moved to the browser: the overlay page fetches the wav over HTTP and
+    plays it, which means OBS picks the audio up natively from the browser source and
+    the bot thread is never blocked waiting for a clip to finish.
+    """
 
     def __init__(self):
-        file_path = self.azuretts_manager.text_to_audio("Chat God App is now running!") # Say some shit when the app starts
-        self.audio_manager.play_audio(file_path, True, True, True)
+        self.azuretts_manager = AzureTTSManager()
+
+        self.voices = {
+            number: {"name": config["voice_name"], "style": DEFAULT_VOICE_STYLE}
+            for number, config in PLAYER_CONFIG.items()
+        }
+
+        # Only constructed when explicitly enabled. Off by default, so a closed OBS
+        # is no longer able to take the whole app down at startup.
+        self.obswebsockets_manager = None
+        if OBS_WEBSOCKETS_ENABLED:
+            from obs_websockets import OBSWebsocketsManager
+            self.obswebsockets_manager = OBSWebsocketsManager()
+
+        self._audio_manager = None  # built on demand; only local playback needs it
+
+    # -- voice settings -------------------------------------------------------
 
     def update_voice_name(self, user_number, voice_name):
-        if user_number == "1":
-            self.user1_voice_name = voice_name
-        elif user_number == "2":
-            self.user2_voice_name = voice_name
-        elif user_number == "3":
-            self.user3_voice_name = voice_name
-        
+        voice = self.voices.get(user_number)
+        if voice is None:
+            print(f"Unknown player number {user_number!r}; voice name not changed.")
+            return
+        voice["name"] = voice_name
+        print(f"Player {user_number}: voice name is now {voice_name}")
+
     def update_voice_style(self, user_number, voice_style):
-        if user_number == "1":
-            self.user1_voice_style = voice_style
-        elif user_number == "2":
-            self.user2_voice_style = voice_style
-        elif user_number == "3":
-            self.user3_voice_style = voice_style
+        voice = self.voices.get(user_number)
+        if voice is None:
+            print(f"Unknown player number {user_number!r}; voice style not changed.")
+            return
+        voice["style"] = voice_style
+        print(f"Player {user_number}: voice style is now {voice_style}")
 
-    def text_to_audio(self, text, user_number):
-        if user_number == "1":
-            voice_name = self.user1_voice_name
-            voice_style = self.user1_voice_style
-        elif user_number == "2":
-            voice_name = self.user2_voice_name
-            voice_style = self.user2_voice_style
-        elif user_number == "3":
-            voice_name = self.user3_voice_name
-            voice_style = self.user3_voice_style
+    # -- synthesis ------------------------------------------------------------
 
-        tts_file = self.azuretts_manager.text_to_audio(text, voice_name, voice_style)
+    def synthesize(self, text, user_number):
+        """
+        Render text to a wav file and return its path, or None if there's nothing
+        to say. Blocking, so call it from the speech worker rather than the bot.
+        """
+        voice = self.voices.get(user_number)
+        if voice is None:
+            print(f"Unknown player number {user_number!r}; skipping TTS.")
+            return None
+        return self.azuretts_manager.text_to_audio(text, voice["name"], voice["style"])
 
-        # OPTIONAL: Use OBS Websockets to enable the Move plugin filter
-        if user_number == "1":
-            self.obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - DnD Player 1", True)
-        elif user_number == "2":
-            self.obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - DnD Player 2", True)
-        elif user_number == "3":
-            self.obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - DnD Player 3", True)
+    # -- local playback (startup chime and tts_test.py only) -------------------
 
-        self.audio_manager.play_audio(tts_file, True, True, True)
+    def play_locally(self, file_path, delete_after=True):
+        """
+        Play through the server's own speakers. The live message path no longer uses
+        this -- it exists so the startup chime and the test scripts still work
+        without an overlay page open.
+        """
+        if not file_path:
+            return
+        if self._audio_manager is None:
+            from audio_player import AudioManager
+            self._audio_manager = AudioManager()
+        self._audio_manager.play_audio(file_path, True, delete_after, True)
 
-        if user_number == "1":
-            self.obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - DnD Player 1", False)
-        elif user_number == "2":
-            self.obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - DnD Player 2", False)
-        elif user_number == "3":
-            self.obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - DnD Player 3", False)
+    def play_startup_chime(self):
+        try:
+            path = self.azuretts_manager.text_to_audio("Chat God App is now running!")
+            self.play_locally(path)
+        except Exception as exc:
+            # A missing audio device shouldn't stop the app from running.
+            print(f"Couldn't play the startup chime ({exc}). Continuing.")
+
+    # -- legacy OBS filter toggling -------------------------------------------
+
+    def set_filter(self, user_number, enabled):
+        """No-op unless OBS_WEBSOCKETS_ENABLED is turned back on."""
+        if self.obswebsockets_manager is None:
+            return
+        config = PLAYER_CONFIG.get(user_number)
+        if config is None:
+            return
+        self.obswebsockets_manager.set_filter_visibility(
+            config["obs_source"], config["obs_filter"], enabled)
