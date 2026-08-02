@@ -100,7 +100,17 @@ python azure_text_to_speech.py
 
 You should hear a test line. **If you hear "Azure failed, using gTTS instead"**, your key or region
 is wrong — the code swallows the real Azure error, so check both rather than debugging elsewhere.
-This leaves `_Msg*.wav` files behind; they're safe to delete.
+
+Once that works, build the voice list:
+
+```powershell
+python fetch_voices.py
+```
+
+This asks Azure which voices your subscription offers and which speaking styles each one supports,
+and caches the answer in `voices.json`. Without it the app falls back to a built-in list of eight
+voices and assumes every style works on all of them — which isn't true, and the control panel says
+so until you run it. `python fetch_voices.py en-US en-GB` for more locales, `--all` for everything.
 
 ### 4. Character art
 
@@ -169,6 +179,15 @@ A chatter can override the style by prefixing their message: `(angry)`, `(cheerf
 `(hopeful)`, `(sad)`, `(shouting)`, `(shout)`, `(terrified)`, `(unfriendly)`, `(whispering)`,
 `(whisper)`, or `(random)`.
 
+Styles aren't supported by every voice, and Azure's response to an unsupported one is to render the
+line neutral without reporting anything. So the style dropdown only offers what the selected voice
+can actually do, `random` picks from that same set, and a prefix asking for something unavailable
+falls back to random rather than silently doing nothing. Change to a voice that can't do the style
+you had selected and the control panel tells you it switched.
+
+Some voices support no styles at all. Those are synthesized without a style wrapper, and the panel
+shows "this voice has no speaking styles" rather than offering options that won't apply.
+
 ---
 
 ## Customizing
@@ -215,7 +234,9 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 | `chat_god_app.py` | Flask app, Twitch bot, socket handlers, routes |
 | `players.py` | Player config — the only file you edit to add or retune a player |
 | `voices_manager.py` | Voice state per player, synthesis calls |
-| `azure_text_to_speech.py` | Azure TTS with a gTTS fallback |
+| `azure_text_to_speech.py` | Azure TTS with a gTTS fallback, and the voice/style catalog |
+| `fetch_voices.py` | Asks Azure for the voice list and writes `voices.json`. Run once at setup, again whenever you want to refresh |
+| `voices.sample.json` | Hand-written stand-in showing the file's shape. `voices.json` itself is gitignored — it's specific to your subscription |
 | `templates/overlay.html` | On-stream graphic, lip sync |
 | `templates/control.html` | Operator dashboard |
 | `audio_player.py`, `obs_websockets.py` | Legacy server-side playback and OBS filter toggling, kept for the startup chime and test scripts. Off by default (`OBS_WEBSOCKETS_ENABLED` in `players.py`) |

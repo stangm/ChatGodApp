@@ -12,6 +12,7 @@
     --accent: #79f1ff;
     --ok: #5ad48a;
     --bad: #e0705f;
+    --warn: #e8c06a;
 }
 
 * { box-sizing: border-box; font-family: 'Roboto', sans-serif; }
@@ -42,6 +43,30 @@ h1 { font-size: 22px; margin: 0; font-weight: 500; }
     color: var(--muted);
     margin: 14px 0 22px;
     line-height: 1.6;
+}
+
+/* Shown when voices.json is missing and the built-in list is standing in. */
+.hint.warn {
+    border-left: 2px solid var(--warn);
+    padding-left: 12px;
+    color: var(--text);
+}
+
+/* Sits under the style dropdown. Takes no vertical space when empty, so the
+   panels don't jump as notes appear and clear. */
+.style-note {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--warn);
+    margin: -4px 0 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 120ms ease-out;
+}
+
+.style-note.visible {
+    max-height: 40px;
+    margin: -4px 0 2px;
 }
 
 code {

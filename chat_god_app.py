@@ -14,7 +14,8 @@ import random
 import os
 import uuid
 
-from azure_text_to_speech import AZURE_VOICES, AZURE_VOICE_STYLES
+from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALOG,
+                                  VOICES_FROM_AZURE, styles_for)
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
 
@@ -96,15 +97,28 @@ class SpeechWorker:
 
 
 def _voice_label(voice_id):
-    """'en-US-DavisNeural' -> 'Davis' for the dropdown."""
+    """
+    Label for the dropdown. Azure gives a local_name ('Davis') in the catalog;
+    fall back to trimming the id when running on the built-in list.
+    """
+    entry = VOICE_CATALOG.get(voice_id)
+    if entry and entry.get("local_name"):
+        label = entry["local_name"]
+        gender = entry.get("gender")
+        return f"{label} ({gender})" if gender else label
     name = voice_id.split("-")[-1]
     return name[:-len("Neural")] if name.endswith("Neural") else name
 
 
-# Built from the same lists the TTS code uses, so the dropdowns can't drift out of
-# sync with what Azure will actually accept.
+# Built from the same catalog the TTS code uses, so the dropdowns can't drift out
+# of sync with what Azure will actually accept.
 VOICE_OPTIONS = [(voice, _voice_label(voice)) for voice in AZURE_VOICES]
 STYLE_OPTIONS = ["random"] + list(AZURE_VOICE_STYLES)
+
+# voice -> the styles it really supports, handed to the control panel so it can
+# narrow the style dropdown as the voice changes. A voice with an empty list
+# supports no express-as at all, and only "random" (meaning "none") applies.
+VOICE_STYLE_MAP = {voice: styles_for(voice) for voice in AZURE_VOICES}
 
 
 @app.route("/")
@@ -119,6 +133,8 @@ def control():
                            players=PLAYER_CONFIG,
                            voices=VOICE_OPTIONS,
                            styles=STYLE_OPTIONS,
+                           voice_styles=VOICE_STYLE_MAP,
+                           voices_from_azure=VOICES_FROM_AZURE,
                            default_style=DEFAULT_VOICE_STYLE)
 
 
@@ -223,7 +239,16 @@ def choose_voice_name(value):
     player = _player_from(value)
     if player is None or not value.get('voice_name'):
         return
-    twitchbot.tts_manager.update_voice_name(player.number, value['voice_name'])
+    voice_name = value['voice_name']
+    reset_to = twitchbot.tts_manager.update_voice_name(player.number, voice_name)
+    if reset_to is not None:
+        # The style that was selected isn't available on the new voice. Say so,
+        # rather than leaving a dropdown showing something that won't happen.
+        socketio.emit('style_reset', {
+            'user_number': player.number,
+            'voice_style': reset_to,
+            'available': styles_for(voice_name),
+        })
 
 
 @socketio.on("voicestyle")

@@ -133,6 +133,25 @@ Generated wavs go to `%TEMP%\chatgod_audio`, not the project folder. The live ap
 directory at 50 clips and deletes the oldest as it goes; this standalone test doesn't, so if you run
 it a lot you can empty the folder by hand.
 
+**3.5 Build the voice list.** Only once Azure is confirmed working, since this call uses the same
+credentials:
+
+```powershell
+python fetch_voices.py
+```
+
+It asks Azure which voices your subscription offers and which speaking styles each supports, then
+writes `voices.json`. Add locales if you want more than `en-US` (`python fetch_voices.py en-US
+en-GB`), or `--all` for the lot — that's several hundred voices and makes for a long dropdown.
+
+Skipping this isn't fatal: the app falls back to a built-in list of eight voices and assumes all
+nine styles work on each. That assumption is wrong for some voices, and wrong in the quiet way —
+Azure renders an unsupported style neutral and reports nothing. The control panel shows a warning
+until you've run the fetch.
+
+**Check:** the script prints how many voices it found and how many support styles. The control panel
+warning should be gone next time you start the app.
+
 > This stage plays through the *server's* speakers via pygame, which is the one remaining local
 > playback path (it's also what the startup chime uses). Live messages don't work this way — they
 > play in the browser. So hearing audio here confirms Azure, not the overlay.
@@ -224,6 +243,9 @@ If step 3 gives you text but no sound, check you're listening to OBS and not a b
 | Overlay shows text but never speaks | You're listening to a browser tab, not OBS (gotcha #3), or the source is muted in OBS's Audio Mixer |
 | Mouth flaps on a timer instead of matching speech | WebAudio couldn't start; the page falls back to a fixed flap. Check the source's console via *Interact* |
 | Mouth never closes, or barely opens | Threshold needs adjusting — top of `templates/overlay.html`, with comments |
+| Style dropdown has fewer options than expected | Working as intended — it only lists styles the selected voice supports. Some voices support none |
+| Control panel warns about the built-in voice list | `fetch_voices.py` hasn't been run, or it failed and `voices.json` was never written |
+| `fetch_voices.py` says it can't retrieve voices | Same key/region problem as stage 3.4 — the region must be `eastus`, not "East US" |
 | 404 "Unknown player" | The `?player=` number has no matching entry in `players.py` |
 | `AttributeError` from twitchio on startup | twitchio 3.x got installed somehow; `pip install -r requirements.txt` pins it below 3 |
 | Character jumps when the mouth opens | The two PNGs aren't the same dimensions |

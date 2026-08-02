@@ -1,4 +1,4 @@
-from azure_text_to_speech import AzureTTSManager
+from azure_text_to_speech import AzureTTSManager, styles_for
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE, OBS_WEBSOCKETS_ENABLED
 
 
@@ -31,12 +31,30 @@ class TTSManager:
     # -- voice settings -------------------------------------------------------
 
     def update_voice_name(self, user_number, voice_name):
+        """
+        Change the voice. Returns the style it had to fall back to if the current
+        style isn't available on the new voice, otherwise None.
+
+        Styles aren't universal across voices, so switching voice can strand the
+        selected style. Silently sending it anyway is what the old code did, and
+        Azure's response to an unsupported style is to render the line neutral
+        without complaining -- so the operator saw "whispering" selected and
+        heard nothing of the sort.
+        """
         voice = self.voices.get(user_number)
         if voice is None:
             print(f"Unknown player number {user_number!r}; voice name not changed.")
-            return
+            return None
         voice["name"] = voice_name
         print(f"Player {user_number}: voice name is now {voice_name}")
+
+        available = styles_for(voice_name)
+        if voice["style"] != "random" and voice["style"] not in available:
+            stranded, voice["style"] = voice["style"], "random"
+            print(f"Player {user_number}: {voice_name} doesn't support "
+                  f"'{stranded}', falling back to random.")
+            return "random"
+        return None
 
     def update_voice_style(self, user_number, voice_style):
         voice = self.voices.get(user_number)

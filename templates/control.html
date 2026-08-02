@@ -38,12 +38,59 @@
                 input.val('');
             });
 
+            // voice -> styles that voice actually supports. Sent by the server from
+            // voices.json, so the dropdown can't offer a style Azure will ignore.
+            var VOICE_STYLES = {{ (voice_styles or {}) | tojson }};
+
+            function note(number, text) {
+                var el = $('#style-note-' + number);
+                el.text(text || '');
+                el.toggleClass('visible', !!text);
+            }
+
+            // Rebuild the style dropdown for whichever voice is selected. "random"
+            // is always offered; for a voice with no styles it's the only option,
+            // and it means "no express-as at all" rather than "pick one".
+            function refreshStyles(number, voiceName, preferred) {
+                var select = $('#voicestyle-' + number);
+                var available = VOICE_STYLES[voiceName] || [];
+                var current = preferred || select.val();
+
+                select.empty().append($('<option>').val('random').text('random'));
+                available.forEach(function(style) {
+                    select.append($('<option>').val(style).text(style));
+                });
+
+                if (current !== 'random' && available.indexOf(current) === -1) {
+                    select.val('random');
+                    note(number, current + ' isn\'t available on this voice - using random');
+                } else {
+                    select.val(current);
+                    note(number, available.length ? '' : 'this voice has no speaking styles');
+                }
+            }
+
             $('select.voicename').on('change', function() {
-                socket.emit('voicename', { user_number: player(this), voice_name: $(this).val() });
+                var number = player(this);
+                socket.emit('voicename', { user_number: number, voice_name: $(this).val() });
+                refreshStyles(number, $(this).val());
             });
 
             $('select.voicestyle').on('change', function() {
                 socket.emit('voicestyle', { user_number: player(this), voice_style: $(this).val() });
+                note(player(this), '');
+            });
+
+            // The server reached the same conclusion independently -- trust it, since
+            // this page could have been open while voices.json changed underneath it.
+            socket.on('style_reset', function(msg) {
+                refreshStyles(msg.user_number, $('#voicename-' + msg.user_number).val(),
+                              msg.voice_style);
+            });
+
+            // Narrow each dropdown to its starting voice on load.
+            $('select.voicename').each(function() {
+                refreshStyles(player(this), $(this).val());
             });
 
             // Mirror the overlay so the operator can see who is assigned.
@@ -70,6 +117,15 @@
         <code>http://127.0.0.1:5000/overlay?player=1</code> (one per player), or
         <code>http://127.0.0.1:5000/overlay</code> for all of them in a row.
     </p>
+
+    {% if not voices_from_azure %}
+    <p class="hint warn">
+        Using the built-in list of {{ voices | length }} voices. Run
+        <code>python fetch_voices.py</code> to load every voice your Azure subscription
+        offers, and the styles each one genuinely supports &mdash; until then the style
+        options here are a best guess.
+    </p>
+    {% endif %}
 
     <div class="panels">
         {% for number, config in players.items() %}
@@ -101,7 +157,7 @@
 
             <label class="field">
                 <span class="label">Voice</span>
-                <select class="voicename">
+                <select class="voicename" id="voicename-{{ number }}">
                     {% for value, display in voices %}
                     <option value="{{ value }}" {% if value == config.voice_name %}selected{% endif %}>{{ display }}</option>
                     {% endfor %}
@@ -110,12 +166,14 @@
 
             <label class="field">
                 <span class="label">Style</span>
-                <select class="voicestyle">
+                <select class="voicestyle" id="voicestyle-{{ number }}">
                     {% for value in styles %}
                     <option value="{{ value }}" {% if value == default_style %}selected{% endif %}>{{ value }}</option>
                     {% endfor %}
                 </select>
             </label>
+
+            <div class="style-note" id="style-note-{{ number }}"></div>
 
             <div class="last-message" id="last-message-{{ number }}"></div>
 
