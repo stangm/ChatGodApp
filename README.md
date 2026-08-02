@@ -1,42 +1,221 @@
 # ChatGodApp
 
-Written by DougDoug, with help from Banana!
-You are welcome to adapt/use this code for whatever you'd like. Credit is appreciated but not necessary.
+Reads your Twitch chatters' messages aloud with Azure TTS and animates a character's mouth
+in time with the audio, as an OBS browser source.
 
-## SETUP
-1) This was written in Python 3.9.2. Install page here: https://www.python.org/downloads/release/python-392/
+Originally written by [DougDoug](https://github.com/DougDougGithub/ChatGodApp), with help from
+Banana. This fork moves the animation and audio into the browser — see
+[What's different in this fork](#whats-different-in-this-fork). You're welcome to adapt or use
+this code for whatever you'd like.
 
-2) Run "pip install -r requirements.txt" to install all modules.
+---
 
-3) This uses the twitchio module to connect to your Twitch channel.
-First you must generate a Access Token for your account. You can do this at: https://twitchtokengenerator.com/ , just make sure the Access Token has chat:read and chat:edit enabled.
-Once you've generated an Access Token, set it as a windows environment variable named TWITCH_ACCESS_TOKEN.
-Then update the TWITCH_CHANNEL_NAME variable in chat_god_app.py to the name of the twitch channel you are connecting to.
+## What's different in this fork
 
-4) This uses Microsoft Azure's TTS service for the text-to-speech voices. 
-First you must make an account and sign up for Microsoft Azure's services.
-Then use their site to generate an access key and region for the text-to-speech service.
-Then, set these as windows environment variables named AZURE_TTS_KEY and AZURE_TTS_REGION.
+The upstream version played TTS through the server's speakers, routed that audio into OBS, and
+used the **Move** plugin to nudge image sources based on the waveform. That meant a virtual audio
+cable, an audio capture source with an exact name, three filters with exact names, threshold
+tuning, and OBS having to be running before the app would start at all.
 
-5) Optionally, you can use OBS Websockets and an OBS plugin to make images move while talking.
-First open up OBS. Make sure you're running version 28.X or later.
-Click Tools, then WebSocket Server Settings.
-Make sure "Enable WebSocket server" is checked. Make sure Server Port is '4455', and set the Server Password to 'TwitchChat9'.
-Next install the Move OBS plugin: https://obsproject.com/forum/resources/move.913/
-Now you can use the plugin to add a filter to an audio source that will change an image's transform based on the audio waveform.
-For example, I have a filter that will move each of the player images whenever text-to-speech audio is playing.
-Lastly, in the voices_manager.py code, update the OBS section so that it will turn the corresponding filters on and off when text-to-speech audio is being played.
-Note that OBS must be open when you're running this code, otherwise OBS WebSockets won't be able to connect.
-If you don't need the images to move while talking, you can just delete the OBS portions of the code.
+Here, the overlay page does all of it:
 
-## BASIC APP USAGE
+| | Upstream | This fork |
+|---|---|---|
+| Audio playback | pygame, on the server | `<audio>` in the overlay page |
+| Audio into OBS | VB-Cable + per-app routing | Browser source audio, native |
+| Mouth animation | Move plugin filter | WebAudio amplitude, in the page |
+| Per-player OBS setup | 2 image sources + 1 named filter | 1 browser source |
+| OBS required to start? | Yes — app exited without it | No |
 
-1) Run chat_god_app.py and then open up http://127.0.0.1:5000 on a browser or as a browser source in OBS
+No Move plugin, no VB-Cable, no websocket password, no OBS running requirement.
 
-2) You can enter a user's name in the "Choose User" field and hit enter to manually assign them as that player.
-Alternatively, viewers can join the pool of potential players by typing !player1, !player2, or !player3.
-Then, when you hit Pick Random, it will pick one of the viewers randomly from that player pool.
+---
 
-3) Once a user is picked, their twitch messages will be automatically read out loud via Azure TTS.
-You can change the voice and the voice style using the drop down menus on the web app.
-If a user starts their message with (angry), (cheerful), (excited), (hopeful), (sad), (shouting), (shout), (terrified), (unfriendly), (whispering), (whisper), or (random), it will automatically use that voice style.
+## Setup
+
+### 1. Python and dependencies
+
+Python 3.9–3.12. On 3.13+ you may hit missing wheels for `azure-cognitiveservices-speech`; if so,
+install 3.12 alongside and use `py -3.12` below.
+
+```powershell
+cd path\to\ChatGodApp
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+If PowerShell blocks the activate script:
+`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+**Check:** `python -c "import pygame, twitchio, flask, azure.cognitiveservices.speech; print('ok')"`
+
+> **Optional:** `winget install ffmpeg`. `pydub` needs it for the gTTS fallback, which is the path
+> you land on when Azure fails — exactly when you don't want a second error.
+
+> **OneDrive users:** a `.venv` inside a synced folder uploads thousands of files for no benefit.
+> It's in `.gitignore`, but also right-click the folder → *Always keep on this device* → off, or
+> put the venv elsewhere entirely (`python -m venv C:\venvs\chatgod`).
+
+### 2. Twitch
+
+Generate a token at <https://twitchtokengenerator.com/> — choose **Bot Chat Token**, with
+**`chat:read`** and **`chat:edit`** enabled. Copy the *Access Token*, not the refresh token.
+
+```powershell
+[Environment]::SetEnvironmentVariable("TWITCH_ACCESS_TOKEN", "yourtokenhere", "User")
+```
+
+Then set your channel in `chat_god_app.py` (line 21):
+
+```python
+TWITCH_CHANNEL_NAME = 'yourchannelname'   # lowercase, no URL, no @
+```
+
+**Close and reopen your terminal** — environment variables don't reach already-open shells. This is
+the single most common "it works for everyone else" failure.
+
+**Check:** `python -c "import os; print(os.getenv('TWITCH_ACCESS_TOKEN')[:10])"` should print
+characters, not `None`.
+
+### 3. Azure Speech
+
+In the [Azure portal](https://portal.azure.com): *Create a resource* → **Speech** → Create. Any
+nearby region, pricing tier **F0 (Free)** — 500,000 characters/month, far more than a stream uses.
+
+Copy Key 1 and the Region from *Keys and Endpoint*. The region must be the short form
+(`eastus`, `westus2`), **not** the display name:
+
+```powershell
+[Environment]::SetEnvironmentVariable("AZURE_TTS_KEY", "your-key-here", "User")
+[Environment]::SetEnvironmentVariable("AZURE_TTS_REGION", "eastus", "User")
+```
+
+Reopen the terminal again, then test Azure on its own:
+
+```powershell
+python azure_text_to_speech.py
+```
+
+You should hear a test line. **If you hear "Azure failed, using gTTS instead"**, your key or region
+is wrong — the code swallows the real Azure error, so check both rather than debugging elsewhere.
+This leaves `_Msg*.wav` files behind; they're safe to delete.
+
+### 4. Character art
+
+Drop two PNGs per player in `static/characters/`, named by convention:
+
+```
+player1-closed.png    player1-open.png
+player2-closed.png    player2-open.png
+player3-closed.png    player3-open.png
+```
+
+Same dimensions for both, mouth closed and mouth open. Transparent backgrounds work best. To keep
+files elsewhere under `static/`, add `image_closed` / `image_open` to that player's entry in
+`players.py`.
+
+### 5. OBS
+
+Add one **Browser** source per player:
+
+| Source | URL |
+|---|---|
+| Player 1 | `http://127.0.0.1:5000/overlay?player=1` |
+| Player 2 | `http://127.0.0.1:5000/overlay?player=2` |
+| Player 3 | `http://127.0.0.1:5000/overlay?player=3` |
+
+Position and scale each independently. Leave **Control audio via OBS** unchecked unless you want
+the TTS on a dedicated mixer channel.
+
+`http://127.0.0.1:5000/overlay` with no parameter renders all players in a row, matching the old
+single-source layout, if you'd rather have one source.
+
+That's the whole OBS setup. No plugins, no audio capture source, no filters.
+
+---
+
+## Running it
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python chat_god_app.py
+```
+
+Open **<http://127.0.0.1:5000/control>** in a normal browser — this is your operator dashboard.
+Don't add it to OBS; it's not meant for stream.
+
+From the control panel you can assign a chatter to each player slot, pick voices and styles, and
+toggle TTS per player, all live.
+
+**Smoke test:**
+
+1. Type `!player1` in your own chat.
+2. Hit **Pick Random** under player 1 — your name appears.
+3. Type anything in chat — it should appear on the overlay and be read aloud, with the mouth moving.
+4. Change the voice dropdown, type again, confirm it changed.
+5. Type `(angry) hello` — confirm the style prefix is picked up.
+6. Untick TTS, type again — text appears silently.
+
+### Assigning players
+
+Chatters join a pool by typing `!player1`, `!player2` or `!player3`. **Pick Random** draws one from
+that pool. Or type a username directly into *Choose User* and hit enter.
+
+### Voice styles
+
+A chatter can override the style by prefixing their message: `(angry)`, `(cheerful)`, `(excited)`,
+`(hopeful)`, `(sad)`, `(shouting)`, `(shout)`, `(terrified)`, `(unfriendly)`, `(whispering)`,
+`(whisper)`, or `(random)`.
+
+---
+
+## Customizing
+
+**Adding a fourth player** is one entry in `players.py`:
+
+```python
+"4": {
+    "keyphrase": "!player4",
+    "voice_name": "en-US-JennyNeural",
+},
+```
+
+Add `player4-closed.png` / `player4-open.png`, restart, and add a browser source pointing at
+`?player=4`. Nothing else needs to change.
+
+**Mouth too twitchy, or barely opening?** The threshold and the minimum gap between mouth swaps
+are both at the top of `templates/overlay.html`, with comments explaining which way to move them.
+
+**Default voices per player** are the `voice_name` values in `players.py`.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| No `Logged in as` line | Token missing or expired, or the terminal was open before you set the env var |
+| Bot connects but ignores you | `TWITCH_CHANNEL_NAME` is wrong or wrong case |
+| "Azure failed, using gTTS instead" | Bad `AZURE_TTS_KEY`, or region as "East US" instead of `eastus` |
+| Nothing on **Pick Random** | Pool is empty — someone must type `!player1` first |
+| Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page |
+| Text appears, no audio | Check the browser source isn't muted in OBS's Audio Mixer |
+| Mouth never closes / never opens | Adjust the threshold in `templates/overlay.html` |
+| `AttributeError` from twitchio at startup | twitchio 3.x got installed — `pip install -r requirements.txt` pins it below 3 |
+| 404 "Unknown player" | The `?player=` number has no entry in `players.py` |
+
+---
+
+## Files
+
+| | |
+|---|---|
+| `chat_god_app.py` | Flask app, Twitch bot, socket handlers, routes |
+| `players.py` | Player config — the only file you edit to add or retune a player |
+| `voices_manager.py` | Voice state per player, synthesis calls |
+| `azure_text_to_speech.py` | Azure TTS with a gTTS fallback |
+| `templates/overlay.html` | On-stream graphic, lip sync |
+| `templates/control.html` | Operator dashboard |
+| `audio_player.py`, `obs_websockets.py` | Legacy server-side playback and OBS filter toggling, kept for the startup chime and test scripts. Off by default (`OBS_WEBSOCKETS_ENABLED` in `players.py`) |
