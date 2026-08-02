@@ -69,6 +69,12 @@ that only exists on your disk.
     "1": { "character": "wizard" },
     "2": { "character": "goblin" },
     "3": { "character": null }
+  },
+  "casts": {
+    "dnd-night": {
+      "display_name": "D&D Night",
+      "slots": { "1": "wizard", "2": "goblin", "3": "bard" }
+    }
   }
 }
 ```
@@ -206,6 +212,45 @@ rendering neutral is the confusing behaviour this is meant to remove.
 
 ---
 
+## Casts — loading a group of characters at once
+
+A **cast** is a named set of slot assignments: "D&D Night" is wizard in 1, goblin in 2, bard in 3.
+Applying it is one action instead of three, and it's how you'd switch shows between streams — or
+between segments of the same stream.
+
+**It is exactly N assignments, not a new mechanism.** Applying a cast loops the existing assign path
+once per slot, which means it inherits everything already decided: each slot resets to its
+character's default voice, style and display toggles, and each fires `art_changed` so the overlays
+swap in place. Nothing new to specify about what applying one *does*. That's the whole reason to
+model it this way rather than as a second kind of thing that also sets slots.
+
+**Creating one is "save the current arrangement."** Same shape as *Save as default*, one level up:
+arrange the slots by hand, like what you see, name it. Hand-authoring the JSON works too, but nobody
+should have to. The two write paths — apply and save — are the whole feature.
+
+**A cast names characters, not chatters.** Applying one changes the costumes, not who's wearing
+them: whoever was assigned to slot 1 is still assigned to slot 1, now speaking as the bard. This
+follows the rule already in the reset table — changing the cast is a reset point for the character,
+and who's talking is a separate axis. Whether you'd *want* the pools cleared when switching shows is
+listed as open below.
+
+**Slots the cast doesn't mention are left alone.** A cast written when three slots existed, applied
+after you add a fourth, leaves slot 4 as it was rather than clearing it. Silent clearing is worse:
+a slot going empty mid-stream reads as breakage. `null` is still available as an explicit "empty
+this slot", so the cast can say so when it means it.
+
+**The mid-stream hazard is real and worth designing against.** One click changes every character on
+screen and discards every live voice override you'd made since the last assignment. That's a much
+bigger blast radius than anything else on the control panel, and it sits next to buttons you press
+routinely. At minimum it wants confirmation naming what's about to change; the alternative is
+keeping casts on `/setup` and out of the control panel entirely, which trades the accident risk for
+not being able to switch shows quickly while live.
+
+**Depends on stage D**, since it's built on the assignment write path. Not worth attempting before
+single-slot assignment works.
+
+---
+
 ## Routes
 
 | Route | Purpose |
@@ -215,6 +260,8 @@ rendering neutral is the confusing behaviour this is meant to remove.
 | `POST /setup/upload` | Art upload → `static/characters/` |
 | `POST /setup/assign` | Assign a character to a slot |
 | `POST /setup/save-default` | Write live voice/style back to the character |
+| `POST /setup/cast/apply` | Apply a cast — assign every slot it names |
+| `POST /setup/cast/save` | Save the current slot arrangement as a named cast |
 
 Whether `/setup` is a new template or reuses the orphaned `templates/index.html` is worth deciding
 when building it. `index.html` is 307 lines of the old three-panel markup and jQuery, currently
@@ -259,6 +306,10 @@ by `style_list`. Independently useful — fixes the silent-style bug on its own,
 
 **E. Art upload.** Last, because it's the only stage handling files from a form — needs extension and
 size validation, and a decision on overwrite versus versioned filenames.
+
+**F. Casts.** Apply and save a named group of slot assignments. Built entirely on D's assign path, so
+it's small once D exists and impossible before it. Independent of art upload, so it can land before
+or after E.
 
 B is worth doing first if you want a win before the setup screen exists.
 
@@ -324,3 +375,16 @@ Nothing blocking. Worth thinking about during stage E:
 - **Does the character name show when nobody is assigned?** Arguably yes: the Wizard exists whether
   or not someone is speaking as him, and a permanently-labelled slot is easier to read on stream.
   Means the overlay needs character state independent of chatter state.
+
+And during stage F:
+
+- **Should applying a cast clear the chatter pools?** Keeping them treats a cast as a costume change,
+  which is right mid-stream. Switching to an entirely different show with the last show's viewers
+  still queued in slot 2 is the case for clearing. Possibly a checkbox on the confirmation rather
+  than a fixed rule.
+- **Can a cast carry voice overrides?** As specced it names characters only, so voices come from each
+  character's defaults. Letting a cast pin a voice would mean the same character sounding different
+  between shows — useful, but it adds a fourth layer to a resolution order that's currently three
+  and readable.
+- **Where do casts live in the UI?** `/setup` is safe; the control panel is fast. See the mid-stream
+  hazard above — this is the decision that section is really about.
