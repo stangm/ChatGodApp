@@ -11,10 +11,16 @@ Run this once after setting AZURE_TTS_KEY and AZURE_TTS_REGION, and again
 whenever you want to pick up new voices. The app reads the cached file at
 startup and never calls Azure just to draw a dropdown.
 
-    python fetch_voices.py                  # en-US, free-tier voices only
-    python fetch_voices.py en-US en-GB      # several locales
+    python fetch_voices.py                  # every English locale
+    python fetch_voices.py en-US            # one specific locale
+    python fetch_voices.py en-GB en-AU      # several
+    python fetch_voices.py en fr            # whole languages
     python fetch_voices.py --all            # every locale (hundreds)
     python fetch_voices.py --include-premium # add HD and AOAI voices
+
+An argument with no region ("en") matches every locale in that language, so the
+default picks up en-GB, en-AU, en-IE, en-IN and the rest alongside en-US. An
+argument with a region ("en-GB") matches only that one.
 
 Premium voices are excluded by default. Azure's free F0 tier covers "prebuilt
 non-HD and non-AOAI neural voices" -- so the HD families (DragonHD, and the
@@ -25,6 +31,7 @@ your credit card. Pass --include-premium if you are on a paid tier and want
 them; the file records which is which either way.
 """
 
+import collections
 import json
 import os
 import sys
@@ -32,7 +39,50 @@ import sys
 import azure.cognitiveservices.speech as speechsdk
 
 OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voices.json")
-DEFAULT_LOCALES = ["en-US"]
+DEFAULT_LOCALES = ["en"]          # every English locale, not just en-US
+
+# The SDK's VoiceInfo exposes locale ("en-AU") but not Azure's LocaleName
+# ("English (Australia)"), so the readable half is mapped here. Every English
+# locale Azure ships is covered; anything else falls back to the raw code, which
+# is fine for a dropdown label.
+LOCALE_NAMES = {
+    "en-AU": "Australia",
+    "en-CA": "Canada",
+    "en-GB": "United Kingdom",
+    "en-HK": "Hong Kong",
+    "en-IE": "Ireland",
+    "en-IN": "India",
+    "en-KE": "Kenya",
+    "en-NG": "Nigeria",
+    "en-NZ": "New Zealand",
+    "en-PH": "Philippines",
+    "en-SG": "Singapore",
+    "en-TZ": "Tanzania",
+    "en-US": "United States",
+    "en-ZA": "South Africa",
+}
+
+
+def locale_display(locale):
+    """'en-AU' -> 'Australia'. Unknown locales keep their code."""
+    return LOCALE_NAMES.get(locale, locale)
+
+
+def matches(locale, wanted):
+    """
+    True if this locale is one the user asked for.
+
+    A bare language ("en") matches every region in it; a full locale ("en-GB")
+    matches only itself. That's what makes the default pull in all the English
+    variants without listing fourteen of them.
+    """
+    for want in wanted:
+        if "-" in want:
+            if locale == want:
+                return True
+        elif locale.split("-")[0].lower() == want.lower():
+            return True
+    return False
 
 
 def classify(short_name):
@@ -75,7 +125,7 @@ def fetch(locales, keep_all=False, include_premium=False):
 
     voices, skipped = [], {"hd": 0, "aoai": 0}
     for v in result.voices:
-        if not keep_all and v.locale not in locales:
+        if not keep_all and not matches(v.locale, locales):
             continue
 
         tier = classify(v.short_name)
@@ -88,6 +138,7 @@ def fetch(locales, keep_all=False, include_premium=False):
             "local_name": v.local_name,
             "gender": str(v.gender).rsplit(".", 1)[-1],   # SynthesisVoiceGender.Male -> Male
             "locale": v.locale,
+            "locale_name": locale_display(v.locale),
             "tier": tier,
             "voice_type": str(v.voice_type).rsplit(".", 1)[-1],
             # Azure reports a voice with no speaking styles as [''] rather than [],
@@ -97,7 +148,11 @@ def fetch(locales, keep_all=False, include_premium=False):
             "styles": sorted(s for s in (v.style_list or []) if s and s.strip()),
         })
 
-    voices.sort(key=lambda v: v["short_name"])
+    # Grouped by locale in the dropdown, so sort that way here and the template
+    # can just walk the list. Biggest locale first -- whichever you pulled the
+    # most voices for is almost certainly the one you'll pick from.
+    counts = collections.Counter(v["locale"] for v in voices)
+    voices.sort(key=lambda v: (-counts[v["locale"]], v["locale"], v["short_name"]))
     return voices, skipped
 
 
@@ -127,6 +182,15 @@ def main():
     print(f"\nWrote {OUTPUT}")
     print(f"  {len(voices)} voices, {len(styled)} of which support speaking styles")
     print(f"  {len(all_styles)} distinct styles: {', '.join(all_styles) or '(none)'}")
+
+    by_locale = collections.Counter(v["locale"] for v in voices)
+    if len(by_locale) > 1:
+        print(f"\n  Across {len(by_locale)} locales:")
+        for locale, n in by_locale.most_common():
+            with_styles = sum(1 for v in voices
+                              if v["locale"] == locale and v["styles"])
+            note = f", {with_styles} with styles" if with_styles else ""
+            print(f"    {locale_display(locale):18} {n:3} voices{note}")
 
     if len(styled) < len(voices):
         print(f"\n  {len(voices) - len(styled)} voices support no styles at all. Those are "

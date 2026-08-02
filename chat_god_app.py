@@ -115,6 +115,29 @@ def _voice_label(voice_id):
 VOICE_OPTIONS = [(voice, _voice_label(voice)) for voice in AZURE_VOICES]
 STYLE_OPTIONS = ["random"] + list(AZURE_VOICE_STYLES)
 
+
+def _grouped_voices():
+    """
+    [(locale label, [(id, label), ...]), ...] for <optgroup>s.
+
+    Pulling every English locale means the flat list runs past a hundred
+    entries, which is unusable mid-stream. Grouping by country makes it
+    scannable. Order follows the catalog, which fetch_voices.py sorts with the
+    largest locale first.
+    """
+    groups, order = {}, []
+    for voice in AZURE_VOICES:
+        entry = VOICE_CATALOG.get(voice, {})
+        label = entry.get("locale_name") or entry.get("locale") or "Other"
+        if label not in groups:
+            groups[label] = []
+            order.append(label)
+        groups[label].append((voice, _voice_label(voice)))
+    return [(label, groups[label]) for label in order]
+
+
+VOICE_GROUPS = _grouped_voices()
+
 # voice -> the styles it really supports, handed to the control panel so it can
 # narrow the style dropdown as the voice changes. A voice with an empty list
 # supports no express-as at all, and only "random" (meaning "none") applies.
@@ -132,6 +155,7 @@ def control():
     return render_template('control.html',
                            players=PLAYER_CONFIG,
                            voices=VOICE_OPTIONS,
+                           voice_groups=VOICE_GROUPS,
                            styles=STYLE_OPTIONS,
                            voice_styles=VOICE_STYLE_MAP,
                            voices_from_azure=VOICES_FROM_AZURE,

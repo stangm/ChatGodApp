@@ -141,17 +141,29 @@ python fetch_voices.py
 ```
 
 It asks Azure which voices your subscription offers and which speaking styles each supports, then
-writes `voices.json`. Add locales if you want more than `en-US` (`python fetch_voices.py en-US
-en-GB`), or `--all` for the lot — that's several hundred voices and makes for a long dropdown.
+writes `voices.json`. With no arguments it pulls **every English locale** — en-GB, en-AU, en-IE,
+en-IN, en-ZA and the rest, not just en-US. The control panel groups the dropdown by country so the
+list stays usable.
 
-**It leaves out premium voices, and you want that.** Azure returns around 124 `en-US` voices, but
-roughly 70 are HD (`DragonHD`, `Multitalker`) or Azure OpenAI (the Turbo Multilingual set). The free
-F0 tier covers prebuilt *non-HD, non-AOAI* neural voices only, so those bill separately at a higher
-rate. Anyone in your chat can trigger synthesis, so a premium voice sitting in the dropdown is a
-billing accident waiting to happen. `--include-premium` if you're on a paid tier and want them.
+Narrow it with an argument. Without a region means the whole language, with a region means that
+locale only:
 
-Of the ~53 standard voices, about 18 support speaking styles — including all the ones the app
-shipped with. The rest synthesize fine, just without expression.
+```powershell
+python fetch_voices.py en-US      # just American
+python fetch_voices.py en-GB en-AU
+python fetch_voices.py --all      # every locale Azure has, several hundred voices
+```
+
+**It leaves out premium voices, and you want that.** In `en-US` alone Azure returns around 124
+voices, of which roughly 70 are HD (`DragonHD`, `Multitalker`) or Azure OpenAI (the Turbo
+Multilingual set). The free F0 tier covers prebuilt *non-HD, non-AOAI* neural voices only, so those
+bill separately at a higher rate. Anyone in your chat can trigger synthesis, so a premium voice
+sitting in the dropdown is a billing accident waiting to happen. `--include-premium` if you're on a
+paid tier and want them.
+
+Of the ~53 standard `en-US` voices, about 18 support speaking styles — including every one the app
+shipped with. The rest synthesize fine, just without expression. Other English locales have fewer
+styled voices; the script prints the breakdown per locale when it finishes.
 
 Skipping this isn't fatal: the app falls back to a built-in list of eight voices and assumes all
 nine styles work on each. That assumption is wrong for some voices, and wrong in the quiet way —

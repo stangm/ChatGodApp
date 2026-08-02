@@ -158,8 +158,12 @@
             <label class="field">
                 <span class="label">Voice</span>
                 <select class="voicename" id="voicename-{{ number }}">
-                    {% for value, display in voices %}
-                    <option value="{{ value }}" {% if value == config.voice_name %}selected{% endif %}>{{ display }}</option>
+                    {% for locale_label, group in voice_groups %}
+                    <optgroup label="{{ locale_label }}">
+                        {% for value, display in group %}
+                        <option value="{{ value }}" {% if value == config.voice_name %}selected{% endif %}>{{ display }}</option>
+                        {% endfor %}
+                    </optgroup>
                     {% endfor %}
                 </select>
             </label>

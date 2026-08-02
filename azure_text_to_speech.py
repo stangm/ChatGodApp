@@ -60,6 +60,7 @@ def _load_catalog():
                 "local_name": v.get("local_name") or v["short_name"],
                 "gender": v.get("gender", ""),
                 "locale": v.get("locale", ""),
+                "locale_name": v.get("locale_name") or v.get("locale", ""),
                 "tier": v.get("tier", "standard"),
                 # Azure reports "no styles" as [''], not []. fetch_voices.py strips
                 # those, but a file written by an older version still has them, and
@@ -81,6 +82,7 @@ def _load_catalog():
 
     return ({name: {"local_name": name.split("-")[-1].removesuffix("Neural"),
                     "gender": "", "locale": "en-US",
+                    "locale_name": "United States", "tier": "standard",
                     "styles": list(_FALLBACK_STYLES)}
              for name in _FALLBACK_VOICES}, False)
 

@@ -110,14 +110,25 @@ python fetch_voices.py
 This asks Azure which voices your subscription offers and which speaking styles each one supports,
 and caches the answer in `voices.json`. Without it the app falls back to a built-in list of eight
 voices and assumes every style works on all of them — which isn't true, and the control panel says
-so until you run it. `python fetch_voices.py en-US en-GB` for more locales, `--all` for everything.
+so until you run it.
 
-**Premium voices are left out by default.** Azure's free F0 tier covers prebuilt *non-HD, non-AOAI*
-neural voices, so the HD families (`DragonHD`, `Multitalker`) and the Azure OpenAI voices (the Turbo
+**It fetches every English locale by default** — en-GB, en-AU, en-IE, en-IN, en-ZA and the rest
+alongside en-US. The control panel groups the dropdown by country, so a long list stays navigable.
+An argument without a region means "the whole language", one with a region means just that locale:
+
+```powershell
+python fetch_voices.py            # all English
+python fetch_voices.py en-GB      # British only
+python fetch_voices.py en fr      # English and French
+python fetch_voices.py --all      # every locale Azure has
+```
+
+**Premium voices are left out.** Azure's free F0 tier covers prebuilt *non-HD, non-AOAI* neural
+voices, so the HD families (`DragonHD`, `Multitalker`) and the Azure OpenAI voices (the Turbo
 Multilingual set — Alloy, Echo, Fable, Nova, Onyx, Shimmer) bill separately at a higher rate. In
-`en-US` that's about 70 of the ~124 voices Azure returns. Since anyone in chat can trigger synthesis,
-leaving them in the dropdown is a way to run up a bill by accident. Pass `--include-premium` if
-you're on a paid tier and want them.
+`en-US` alone that's about 70 of the ~124 voices Azure returns. Since anyone in chat can trigger
+synthesis, leaving them in the dropdown is a way to run up a bill by accident. Pass
+`--include-premium` if you're on a paid tier and want them.
 
 ### 4. Character art
 
@@ -243,7 +254,7 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 | `voices_manager.py` | Voice state per player, synthesis calls |
 | `azure_text_to_speech.py` | Azure TTS with a gTTS fallback, and the voice/style catalog |
 | `fetch_voices.py` | Asks Azure for the voice list and writes `voices.json`. Run once at setup, again whenever you want to refresh |
-| `voices.sample.json` | Hand-written stand-in showing the file's shape. `voices.json` itself is gitignored — it's specific to your subscription |
+| `voices.sample.json` | Hand-written stand-in showing the file's shape, including the locale grouping. `voices.json` itself is gitignored — it's specific to your subscription |
 | `templates/overlay.html` | On-stream graphic, lip sync |
 | `templates/control.html` | Operator dashboard |
 | `audio_player.py`, `obs_websockets.py` | Legacy server-side playback and OBS filter toggling, kept for the startup chime and test scripts. Off by default (`OBS_WEBSOCKETS_ENABLED` in `players.py`) |
