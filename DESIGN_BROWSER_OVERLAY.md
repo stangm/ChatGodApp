@@ -19,8 +19,13 @@ displays a rectangle.
 | Audio into OBS | VB-Cable + per-app routing + monitoring | Browser source audio, native |
 | Per-player setup | 2 images + 1 filter + exact names | 1 browser source + URL |
 
-Deleted along the way: the Move plugin, VB-Cable, the websocket password, threshold tuning, the
+Dropped from the setup along the way: the Move plugin, VB-Cable, threshold tuning, the
 `time.sleep(file_length)` that blocks the bot, and the `sys.exit()` when OBS isn't running.
+
+`websockets_auth.py` and `obs_websockets.py` survive as implemented, rather than being deleted. The
+filter-toggling path is dormant behind `OBS_WEBSOCKETS_ENABLED` in `players.py`, which is `False`, so
+the app never connects to OBS and the hardcoded websocket password is never used. Keeping it costs
+nothing and leaves an escape hatch for anyone already driving Move filters.
 
 ---
 

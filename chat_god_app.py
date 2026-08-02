@@ -155,8 +155,21 @@ def overlay():
 
 
 @socketio.event
-def connect(): #when socket connects, send data confirming connection
-    socketio.emit('message_send', {'message': "Connected successfully!", 'current_user': "Temp User", 'user_number': "1"})
+def connect():
+    """
+    Log the connection and nothing more.
+
+    This used to broadcast a placeholder message_send ("Temp User" saying
+    "Connected successfully!") pinned to player 1. Harmless when the only client
+    was a control page, but the overlay renders message_send straight into the
+    on-stream name and message boxes -- so every browser-source reload put fake
+    text on stream until a real message replaced it. The broadcast also reached
+    every client, so opening the control panel did it too.
+
+    The control page has its own connection indicator driven by socket.io's own
+    connect event, so nothing needs this.
+    """
+    print("Socket client connected.")
 
 
 def _player_from(value):

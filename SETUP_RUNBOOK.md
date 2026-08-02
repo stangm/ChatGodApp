@@ -129,7 +129,9 @@ You should hear a test line through your speakers, then get a prompt to type mor
 "Azure failed, using gTTS instead"**, your key or region is wrong — the code swallows the real Azure
 error, so check both carefully rather than debugging elsewhere. Ctrl+C to exit.
 
-This step leaves `_Msg*.wav` files in the folder; they're safe to delete.
+Generated wavs go to `%TEMP%\chatgod_audio`, not the project folder. The live app caps that
+directory at 50 clips and deletes the oldest as it goes; this standalone test doesn't, so if you run
+it a lot you can empty the folder by hand.
 
 > This stage plays through the *server's* speakers via pygame, which is the one remaining local
 > playback path (it's also what the startup chime uses). Live messages don't work this way — they

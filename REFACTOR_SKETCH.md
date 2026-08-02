@@ -1,7 +1,11 @@
 # Refactor sketch: collapse `user_1/2/3` into a keyed collection
 
-Design only — no files changed, nothing committed. Goal: adding a 4th player becomes one config entry
-instead of a find-and-replace across `chat_god_app.py`, `voices_manager.py`, and `templates/index.html`.
+> **Status: implemented.** This was written as a plan and is kept for the reasoning behind the
+> shape of `players.py`, not as a description of pending work. Where the outcome diverged from the
+> sketch, there's a note saying so. For how the code works now, read the README.
+
+Goal: adding a 4th player becomes one config entry instead of a find-and-replace across
+`chat_god_app.py`, `voices_manager.py`, and `templates/index.html`.
 
 Current triplication:
 
@@ -12,6 +16,12 @@ Current triplication:
 | `templates/index.html` | 3 identical control panels + 8 near-identical jQuery handlers |
 
 Expected: `chat_god_app.py` 222 → ~130 lines, `index.html` 307 → ~120.
+
+> **Diverged.** `chat_god_app.py` grew instead of shrinking, because the browser-overlay work
+> landed in the same pass and added the audio cache, the `/audio` route and the speech worker.
+> `index.html` was never rewritten — it was left untouched and superseded by two new templates,
+> `control.html` for the operator and `overlay.html` for the stream. The triplication this sketch
+> set out to remove is gone either way; the line counts just aren't a useful measure of it.
 
 ---
 
