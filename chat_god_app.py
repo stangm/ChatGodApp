@@ -15,7 +15,7 @@ import os
 import uuid
 
 from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALOG,
-                                  VOICES_FROM_AZURE, styles_for)
+                                  VOICES_SOURCE, styles_for)
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
 
@@ -182,7 +182,7 @@ def control():
                            voice_groups=VOICE_GROUPS,
                            styles=STYLE_OPTIONS,
                            voice_styles=VOICE_STYLE_MAP,
-                           voices_from_azure=VOICES_FROM_AZURE,
+                           voices_source=VOICES_SOURCE,
                            default_style=DEFAULT_VOICE_STYLE)
 
 

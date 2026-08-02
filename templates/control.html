@@ -118,12 +118,18 @@
         <code>http://127.0.0.1:5000/overlay</code> for all of them in a row.
     </p>
 
-    {% if not voices_from_azure %}
+    {% if voices_source == 'default' %}
     <p class="hint warn">
-        Using the built-in list of {{ voices | length }} voices. Run
-        <code>python fetch_voices.py</code> to load every voice your Azure subscription
-        offers, and the styles each one genuinely supports &mdash; until then the style
-        options here are a best guess.
+        Using the voice list shipped with the repo ({{ voices | length }} voices). It's real
+        data, but Azure's catalogue moves and yours may differ. Run
+        <code>python fetch_voices.py</code> for the current list and your own choice of
+        locales.
+    </p>
+    {% elif voices_source == 'builtin' %}
+    <p class="hint warn">
+        No voice catalogue found &mdash; falling back to {{ voices | length }} voices with no
+        speaking styles. <code>voices.default.json</code> is missing from the repo. Run
+        <code>python fetch_voices.py</code> to build a proper list.
     </p>
     {% endif %}
 

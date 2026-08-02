@@ -165,13 +165,13 @@ Of the ~53 standard `en-US` voices, about 18 support speaking styles — includi
 shipped with. The rest synthesize fine, just without expression. Other English locales have fewer
 styled voices; the script prints the breakdown per locale when it finishes.
 
-Skipping this isn't fatal: the app falls back to a built-in list of eight voices and assumes all
-nine styles work on each. That assumption is wrong for some voices, and wrong in the quiet way —
-Azure renders an unsupported style neutral and reports nothing. The control panel shows a warning
-until you've run the fetch.
+Skipping this isn't fatal. The repo ships `voices.default.json` — a real fetch covering every
+English locale, free-tier voices only — and the app falls back to it, so a fresh clone gets accurate
+voices and real style lists with no Azure account at all. Running the fetch yourself gets you the
+current catalogue (Azure's moves) and your own choice of locales.
 
 **Check:** the script prints how many voices it found and how many support styles. The control panel
-warning should be gone next time you start the app.
+notes which catalogue it's using; that note disappears once your own `voices.json` exists.
 
 > This stage plays through the *server's* speakers via pygame, which is the one remaining local
 > playback path (it's also what the startup chime uses). Live messages don't work this way — they
@@ -265,7 +265,8 @@ If step 3 gives you text but no sound, check you're listening to OBS and not a b
 | Mouth flaps on a timer instead of matching speech | WebAudio couldn't start; the page falls back to a fixed flap. Check the source's console via *Interact* |
 | Mouth never closes, or barely opens | Threshold needs adjusting — top of `templates/overlay.html`, with comments |
 | Style dropdown has fewer options than expected | Working as intended — it only lists styles the selected voice supports. Some voices support none |
-| Control panel warns about the built-in voice list | `fetch_voices.py` hasn't been run, or it failed and `voices.json` was never written |
+| Control panel says it's using the shipped voice list | `fetch_voices.py` hasn't been run, or it failed and `voices.json` was never written. Harmless — that list is real data, just possibly out of date |
+| Control panel says no catalogue found | `voices.default.json` is missing from the repo. Restore it, or run `fetch_voices.py` |
 | `fetch_voices.py` says it can't retrieve voices | Same key/region problem as stage 3.4 — the region must be `eastus`, not "East US" |
 | 404 "Unknown player" | The `?player=` number has no matching entry in `players.py` |
 | `AttributeError` from twitchio on startup | twitchio 3.x got installed somehow; `pip install -r requirements.txt` pins it below 3 |

@@ -108,9 +108,10 @@ python fetch_voices.py
 ```
 
 This asks Azure which voices your subscription offers and which speaking styles each one supports,
-and caches the answer in `voices.json`. Without it the app falls back to a built-in list of eight
-voices and assumes every style works on all of them — which isn't true, and the control panel says
-so until you run it.
+and caches the answer in `voices.json`. Skipping it isn't fatal — the repo ships
+`voices.default.json`, a real fetch covering every English locale, and the app uses that instead.
+Your own fetch gets you the current catalogue and whichever locales you want, and the control panel
+notes which of the two it's running on.
 
 **It fetches every English locale by default** — en-GB, en-AU, en-IE, en-IN, en-ZA and the rest
 alongside en-US. The control panel groups the dropdown by country, so a long list stays navigable.
@@ -261,7 +262,7 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 | `voices_manager.py` | Voice state per player, synthesis calls |
 | `azure_text_to_speech.py` | Azure TTS with a gTTS fallback, and the voice/style catalog |
 | `fetch_voices.py` | Asks Azure for the voice list and writes `voices.json`. Run once at setup, again whenever you want to refresh |
-| `voices.sample.json` | Hand-written stand-in showing the file's shape, including the locale grouping. `voices.json` itself is gitignored — it's specific to your subscription |
+| `voices.default.json` | The voice catalog shipped with the repo — a real fetch, all English locales, free-tier voices. Used when you haven't run `fetch_voices.py`. Your own `voices.json` overrides it and is gitignored |
 | `templates/overlay.html` | On-stream graphic, lip sync |
 | `templates/control.html` | Operator dashboard |
 | `audio_player.py`, `obs_websockets.py` | Legacy server-side playback and OBS filter toggling, kept for the startup chime and test scripts. Off by default (`OBS_WEBSOCKETS_ENABLED` in `players.py`) |
