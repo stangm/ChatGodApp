@@ -98,16 +98,27 @@ class SpeechWorker:
 
 def _voice_label(voice_id):
     """
-    Label for the dropdown. Azure gives a local_name ('Davis') in the catalog;
-    fall back to trimming the id when running on the built-in list.
+    Label for the dropdown: 'Aria (Female) - 16 styles'.
+
+    The style count is there because expressive voices are rare and unevenly
+    spread -- of ~119 English voices, 21 support styles and 18 of those are
+    en-US. Without the count you pick an Australian voice for the accent, then
+    find out later that every (angry) prefix does nothing. Better to see the
+    trade before choosing than after.
     """
     entry = VOICE_CATALOG.get(voice_id)
-    if entry and entry.get("local_name"):
-        label = entry["local_name"]
-        gender = entry.get("gender")
-        return f"{label} ({gender})" if gender else label
-    name = voice_id.split("-")[-1]
-    return name[:-len("Neural")] if name.endswith("Neural") else name
+    if not entry or not entry.get("local_name"):
+        name = voice_id.split("-")[-1]
+        return name[:-len("Neural")] if name.endswith("Neural") else name
+
+    label = entry["local_name"]
+    if entry.get("gender"):
+        label = f"{label} ({entry['gender']})"
+
+    count = len(entry.get("styles", []))
+    if count:
+        label = f"{label} — {count} style{'s' if count != 1 else ''}"
+    return label
 
 
 # Built from the same catalog the TTS code uses, so the dropdowns can't drift out
@@ -125,15 +136,28 @@ def _grouped_voices():
     scannable. Order follows the catalog, which fetch_voices.py sorts with the
     largest locale first.
     """
-    groups, order = {}, []
+    groups, styled, order = {}, {}, []
     for voice in AZURE_VOICES:
         entry = VOICE_CATALOG.get(voice, {})
         label = entry.get("locale_name") or entry.get("locale") or "Other"
         if label not in groups:
             groups[label] = []
+            styled[label] = 0
             order.append(label)
         groups[label].append((voice, _voice_label(voice)))
-    return [(label, groups[label]) for label in order]
+        if entry.get("styles"):
+            styled[label] += 1
+
+    # The group heading carries the same information one level up, so a locale
+    # with no expressive voices at all -- Australia, Ireland, Canada and most of
+    # the rest -- says so without being opened.
+    out = []
+    for label in order:
+        n, s = len(groups[label]), styled[label]
+        count = f"{n} voice" if n == 1 else f"{n} voices"
+        heading = f"{label} ({count}, {s} with styles)" if s else f"{label} ({count}, none with styles)"
+        out.append((heading, groups[label]))
+    return out
 
 
 VOICE_GROUPS = _grouped_voices()

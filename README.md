@@ -203,6 +203,13 @@ can actually do, `random` picks from that same set, and a prefix asking for some
 falls back to random rather than silently doing nothing. Change to a voice that can't do the style
 you had selected and the control panel tells you it switched.
 
+**Expressive voices are rarer than you'd expect, and concentrated in en-US.** Of roughly 119 English
+voices, 21 support styles — and 18 of those are American. Outside the US it's `en-GB` Ryan and Sonia
+and `en-IN` Neerja, and nothing else at all: every Australian, Irish, Canadian, New Zealand and South
+African voice is styleless. So the voice dropdown shows each voice's style count, and each country
+heading shows how many of its voices have any, letting you weigh accent against expression before
+picking rather than after.
+
 Some voices support no styles at all. Those are synthesized without a style wrapper, and the panel
 shows "this voice has no speaking styles" rather than offering options that won't apply.
 
