@@ -1,54 +1,131 @@
 {
-  "_comment": "Hand-written sample so the catalog path can be tested before anyone runs fetch_voices.py. Copy to voices.json to try it, or just run the real fetch. Style lists here are illustrative, not authoritative - only Azure's own answer is.",
-  "locales": ["en-US"],
+  "_comment": "Hand-written sample so the catalog path can be tested before anyone runs fetch_voices.py. Copy to voices.json to try it, or just run the real fetch. Style lists here are illustrative, not authoritative - only Azure's own answer is. tier is 'standard', 'hd' or 'aoai'; only standard is covered by the free F0 tier.",
+  "locales": [
+    "en-US"
+  ],
   "voices": [
     {
       "short_name": "en-US-AriaNeural",
       "local_name": "Aria",
       "gender": "Female",
       "locale": "en-US",
-      "styles": ["angry", "cheerful", "excited", "hopeful", "sad", "shouting", "terrified", "unfriendly", "whispering"]
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
+      "styles": [
+        "angry",
+        "cheerful",
+        "excited",
+        "hopeful",
+        "sad",
+        "shouting",
+        "terrified",
+        "unfriendly",
+        "whispering"
+      ]
     },
     {
       "short_name": "en-US-DavisNeural",
       "local_name": "Davis",
       "gender": "Male",
       "locale": "en-US",
-      "styles": ["angry", "cheerful", "excited", "hopeful", "sad", "shouting", "terrified", "unfriendly", "whispering"]
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
+      "styles": [
+        "angry",
+        "cheerful",
+        "excited",
+        "hopeful",
+        "sad",
+        "shouting",
+        "terrified",
+        "unfriendly",
+        "whispering"
+      ]
     },
     {
       "short_name": "en-US-GuyNeural",
       "local_name": "Guy",
       "gender": "Male",
       "locale": "en-US",
-      "styles": ["angry", "cheerful", "excited", "hopeful", "sad", "shouting", "terrified", "unfriendly", "whispering"]
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
+      "styles": [
+        "angry",
+        "cheerful",
+        "excited",
+        "hopeful",
+        "sad",
+        "shouting",
+        "terrified",
+        "unfriendly",
+        "whispering"
+      ]
     },
     {
       "short_name": "en-US-JaneNeural",
       "local_name": "Jane",
       "gender": "Female",
       "locale": "en-US",
-      "styles": ["angry", "cheerful", "excited", "hopeful", "sad", "shouting", "terrified", "unfriendly", "whispering"]
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
+      "styles": [
+        "angry",
+        "cheerful",
+        "excited",
+        "hopeful",
+        "sad",
+        "shouting",
+        "terrified",
+        "unfriendly",
+        "whispering"
+      ]
     },
     {
       "short_name": "en-US-JennyNeural",
       "local_name": "Jenny",
       "gender": "Female",
       "locale": "en-US",
-      "styles": ["angry", "cheerful", "excited", "friendly", "hopeful", "sad", "shouting", "terrified", "unfriendly", "whispering"]
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
+      "styles": [
+        "angry",
+        "cheerful",
+        "excited",
+        "friendly",
+        "hopeful",
+        "sad",
+        "shouting",
+        "terrified",
+        "unfriendly",
+        "whispering"
+      ]
     },
     {
       "short_name": "en-US-TonyNeural",
       "local_name": "Tony",
       "gender": "Male",
       "locale": "en-US",
-      "styles": ["angry", "cheerful", "excited", "hopeful", "sad", "shouting", "terrified", "unfriendly", "whispering"]
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
+      "styles": [
+        "angry",
+        "cheerful",
+        "excited",
+        "hopeful",
+        "sad",
+        "shouting",
+        "terrified",
+        "unfriendly",
+        "whispering"
+      ]
     },
     {
       "short_name": "en-US-AndrewNeural",
       "local_name": "Andrew",
       "gender": "Male",
       "locale": "en-US",
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
       "styles": []
     },
     {
@@ -56,7 +133,10 @@
       "local_name": "Emma",
       "gender": "Female",
       "locale": "en-US",
+      "tier": "standard",
+      "voice_type": "OnlineNeural",
       "styles": []
     }
-  ]
+  ],
+  "include_premium": false
 }

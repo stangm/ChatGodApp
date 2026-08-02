@@ -112,6 +112,13 @@ and caches the answer in `voices.json`. Without it the app falls back to a built
 voices and assumes every style works on all of them — which isn't true, and the control panel says
 so until you run it. `python fetch_voices.py en-US en-GB` for more locales, `--all` for everything.
 
+**Premium voices are left out by default.** Azure's free F0 tier covers prebuilt *non-HD, non-AOAI*
+neural voices, so the HD families (`DragonHD`, `Multitalker`) and the Azure OpenAI voices (the Turbo
+Multilingual set — Alloy, Echo, Fable, Nova, Onyx, Shimmer) bill separately at a higher rate. In
+`en-US` that's about 70 of the ~124 voices Azure returns. Since anyone in chat can trigger synthesis,
+leaving them in the dropdown is a way to run up a bill by accident. Pass `--include-premium` if
+you're on a paid tier and want them.
+
 ### 4. Character art
 
 Drop two PNGs per player in `static/characters/`, named by convention:

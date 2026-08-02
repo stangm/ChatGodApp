@@ -60,7 +60,12 @@ def _load_catalog():
                 "local_name": v.get("local_name") or v["short_name"],
                 "gender": v.get("gender", ""),
                 "locale": v.get("locale", ""),
-                "styles": list(v.get("styles", [])),
+                "tier": v.get("tier", "standard"),
+                # Azure reports "no styles" as [''], not []. fetch_voices.py strips
+                # those, but a file written by an older version still has them, and
+                # a blank style means a blank dropdown entry and style='' in the
+                # SSML. Cheap to guard here too.
+                "styles": [s for s in v.get("styles", []) if s and s.strip()],
             }
             for v in data["voices"]
         }
