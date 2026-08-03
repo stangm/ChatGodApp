@@ -44,13 +44,9 @@ switching to a voice with no styles (all 15 `en-AU` voices have none, which is t
 
 ### Git state
 
-`main` is at `492d30c`, with the live-state fix and the `config.py` refactor merged and tested.
-
-`feature/character-library` is at `a95243c` and pushed — the whole library, the display toggles, the
-caption layout and the stylesheet cache-buster in one commit. **Not yet merged to `main`.**
-
-All branches are merged into `main` and the old ones deleted. To confirm that yourself at any point:
-`git fetch --prune` then `git branch -a --no-merged main` — empty output means nothing is outstanding.
+Everything lives on `main`; the feature branches were merged and deleted. To confirm nothing is
+outstanding at any point: `git fetch --prune` then `git branch -a --no-merged main` — empty output
+means everything is in.
 
 ### Character library — stages A and A2 are done and verified
 
@@ -89,24 +85,22 @@ has no caller yet.
 
 ### Not done
 
-1. **`config.json`** — stage A of the *install* design is half done. `config.py` owns every read; the
-   JSON layer itself isn't built.
-2. **Nothing survives a restart.** Voice, style, TTS toggle, caption toggles and assignments are all
+1. **Nothing survives a restart.** Voice, style, TTS toggle, caption toggles and assignments are all
    in-memory and rebuild from character defaults. A crash mid-stream silently reverts everything. The
    control panel now *shows* this honestly instead of lying about it, which is an improvement but
    not a fix.
-3. **Layer-2 state lives in two managers.** `TTSManager.voices` holds live voice, `DisplayManager`
+2. **Layer-2 state lives in two managers.** `TTSManager.voices` holds live voice, `DisplayManager`
    holds live captions, for the same slot. They should probably become one slot-state object when
    assignment lands — noted in `display_manager.py`.
-4. **The rest of the character library** — `DESIGN_CHARACTER_LIBRARY.md`, stages C–G. Stage G is an
+3. **The rest of the character library** — `DESIGN_CHARACTER_LIBRARY.md`, stages C–G. Stage G is an
    appearance endpoint: typeface, caption sizes and mouth tuning out of source and into
    `characters.json`, applied live over the socket. Independent of C–F, and the sizes half is cheaper
    than it sounds because every caption size is already a CSS custom property. Font selection is the
    expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
    family locally when it's picked.
-5. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
+4. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
    the **rolling log file**, then E onwards (the wizard) which only pays off at more than one user.
-6. **`templates/index.html` is still orphaned.** 307 lines of superseded markup that no route
+5. **`templates/index.html` is still orphaned.** 307 lines of superseded markup that no route
    renders, now diverged further from `control.html`. Delete or repurpose it for `/setup`.
 
 ---
@@ -152,14 +146,26 @@ Socket events: `tts`, `pickrandom`, `choose`, `voicename`, `voicestyle` in; `mes
 Resolution order, first non-empty wins:
 
 ```
-CHATGOD_ variable  ->  legacy unprefixed variable  ->  (config.json, not built)  ->  default
+CHATGOD_ variable  ->  config.json  ->  legacy unprefixed variable  ->  default
 ```
 
-`CHATGOD_TWITCH_TOKEN`, `CHATGOD_TWITCH_CHANNEL`, `CHATGOD_AZURE_KEY`, `CHATGOD_AZURE_REGION`. The
-old unprefixed names still work; startup names any it falls back to.
+`CHATGOD_TWITCH_TOKEN`, `CHATGOD_TWITCH_CHANNEL`, `CHATGOD_AZURE_KEY`, `CHATGOD_AZURE_REGION`, or the
+same four as `twitch_token` / `twitch_channel` / `azure_key` / `azure_region` in `config.json`. The
+old unprefixed names still work; startup names any it falls back to, and reports which source each
+setting came from.
+
+**`config.json` deliberately outranks the legacy names**, against the usual "env beats files" rule.
+The prefixed variable and the file are both unambiguously meant for this app; an unprefixed
+`AZURE_TTS_KEY` is a guess that a generic name refers to us. Since the file is how a configured
+machine gets handed over, letting a stale variable from another tool beat it would recreate exactly
+the collision the prefix exists to prevent.
+
+Nothing writes `config.json` yet — that's the wizard, install stage E. `config.reload()` exists for
+it.
 
 | File | Written by | Tracked? |
 |---|---|---|
+| `config.json` | Hand, for now — wizard at stage E | **No, it holds secrets** — `config.example.json` is tracked |
 | `players.py` | Hand | Yes |
 | `voices.json` | `fetch_voices.py` | No — `voices.default.json` is the tracked fallback |
 | `characters.json` | Hand, for now — setup screen at stage D | No — `characters.example.json` is tracked |
@@ -269,13 +275,17 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
 
 ## Picking it back up
 
-**The status panel is written but has never run** — five health rows at the top of the control panel,
-a `usage.json` character counter, and a Copy diagnostics button. Verify that first:
+**`config.json` support is written but has never run.** Verify that first:
 
-- All five rows appear, and *Overlay* goes green once OBS connects
-- *Azure* is green after the startup chime; break the key deliberately and it should say so
-- *Quota* shows a number that grows as messages are spoken, and survives a restart
-- Copy diagnostics puts text on the clipboard with **no key or token in it**
+- Copy `config.example.json` to `config.json`, fill it in, unset the environment variables, restart.
+  Startup should print `config.json: found` and `(from config.json)` against each setting.
+- Put a deliberate syntax error in it — the app should print the parse error, say it's ignoring the
+  file, and still start.
+- Set `CHATGOD_TWITCH_CHANNEL` as a variable while the file also has one: the variable should win.
+
+Two things from the status panel were also never confirmed: the **Overlay** row going green as OBS
+connects and amber when it closes, and the **Copy diagnostics** button (check the pasted text has no
+key or token in it). The Azure and Quota rows are proven — `usage.json` recorded the startup chime.
 
 Everything else is clean, merged and pushed.
 
@@ -296,5 +306,5 @@ to end, and the reported width input recalculating at values other than 500.
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 2 Aug 2026 — status panel and diagnostics button added (**untested**); `start.bat`
-launcher working; character library stages A and A2 verified on stream; repo moved out of OneDrive.
+Last updated: 2 Aug 2026 — `config.json` completes install stage A (**untested**); status panel and
+diagnostics added; `start.bat` working; character library A and A2 verified on stream.

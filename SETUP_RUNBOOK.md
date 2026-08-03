@@ -92,35 +92,61 @@ You only hit that path when Azure fails — which is exactly when you don't want
 make sure **`chat:read`** and **`chat:edit`** are both enabled. Copy the **Access Token** (not the
 refresh token).
 
-**2.2 Set it as an environment variable.** Permanent, so it survives reboots:
+**2.2 Put it in `config.json`.** Copy `config.example.json` to `config.json` and fill in the token
+and your channel:
 
-```powershell
-[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_TOKEN", "yourtokenhere", "User")
+```json
+{
+  "twitch_token": "yourtokenhere",
+  "twitch_channel": "yourchannel",
+  "azure_key": "",
+  "azure_region": ""
+}
 ```
 
 Paste the token exactly as the generator gave it. The `oauth:` prefix doesn't matter either way —
 twitchio does `token.replace("oauth:", "")` on input and re-adds it when authenticating, so bare and
-prefixed tokens are identical on the wire. **Close and reopen PowerShell** (gotcha #1).
+prefixed tokens are identical on the wire.
 
-**2.3 Point the bot at your channel.** Also an environment variable — no source file to edit:
+Your channel, no URL and no `@`. Case doesn't matter; the app lowercases it, because twitchio matches
+channels case-sensitively and typing the display name is the usual slip.
+
+> **`config.json` holds a token and a key in plain text.** It's gitignored, but treat it like a
+> password. Not obfuscated on purpose — that would be fake security on a file in your own directory
+> while making it harder to check what's actually set.
+
+<details>
+<summary>Environment variables instead</summary>
 
 ```powershell
+[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_TOKEN", "yourtokenhere", "User")
 [Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_CHANNEL", "yourchannel", "User")
 ```
 
-Your channel, no URL and no `@`. Case doesn't matter; the app lowercases it, because twitchio
-matches channels case-sensitively and typing the display name is the usual slip.
+Still fully supported, and a variable beats the file if both are set — handy for pointing a test run
+at a different channel. **Close and reopen PowerShell afterwards** (gotcha #1); this is the step
+`config.json` exists to avoid.
 
-Reopen PowerShell again.
+</details>
 
-**Check:** both variables should come back non-empty:
+**2.3 Check it.** Both should come back non-empty:
 
 ```powershell
 python -c "from config import setting; print(setting('twitch_token')[:10], setting('twitch_channel'))"
 ```
 
-If either prints empty or `None`, the terminal predates the variable. The app also warns at startup
-about either one being unset, and prints which channel it's actually reading.
+If either prints empty or `None`, check `config.json` is valid JSON — a trailing comma is the usual
+culprit, and the app prints the parse error at startup then carries on without the file. If you used
+variables instead, the terminal probably predates them.
+
+The app reports which source each setting came from at startup, so there's no guessing:
+
+```
+Configuration:
+  config.json: found
+  CHATGOD_TWITCH_TOKEN: set (from config.json)
+  CHATGOD_TWITCH_CHANNEL: silverstagvt (from config.json)
+```
 
 ---
 
@@ -132,15 +158,25 @@ search **Speech** → Create. Pick any region near you and select pricing tier *
 
 **3.2 Copy Key 1 and the Region** from the resource's *Keys and Endpoint* page.
 
-**3.3 Set both variables** — the region must be the short form (`eastus`, `westus2`), **not** the
-display name ("East US"):
+**3.3 Add both to `config.json`** — the region must be the short form (`eastus`, `westus2`), **not**
+the display name ("East US"), which is the most common mistake in the whole setup and fails looking
+like a bad key:
+
+```json
+{
+  "twitch_token": "yourtokenhere",
+  "twitch_channel": "yourchannel",
+  "azure_key": "your-key-here",
+  "azure_region": "eastus"
+}
+```
+
+Or as variables, if that's the route you took:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("CHATGOD_AZURE_KEY", "your-key-here", "User")
 [Environment]::SetEnvironmentVariable("CHATGOD_AZURE_REGION", "eastus", "User")
 ```
-
-Reopen PowerShell again.
 
 **3.4 Test TTS on its own** — the file has a built-in harness, and this isolates Azure from Twitch,
 the browser and OBS entirely:

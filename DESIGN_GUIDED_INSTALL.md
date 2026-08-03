@@ -169,20 +169,34 @@ everything.
 still read and still win, so existing installs and anyone who prefers them are unaffected.
 
 ```
-resolution order:  CHATGOD_ variable  →  legacy variable  →  config.json  →  built-in default
+resolution order:  CHATGOD_ variable  →  config.json  →  legacy variable  →  built-in default
 ```
 
-**The first, second and fourth layers exist now**, in `config.py`. Variables are `CHATGOD_`-prefixed,
-with the old unprefixed names kept as a fallback so no existing install breaks; `setting()` is the
-single read point, so adding `config.json` is one function in one file rather than an edit to three
-modules that then have to agree.
+**Built, all four layers.** `setting()` in `config.py` is the single read point, so this was one
+function in one file rather than an edit to three modules that then have to agree.
 
-Worth noting what the legacy layer costs: a stale `AZURE_TTS_KEY` left over from another tool will
-beat a deliberately-written `config.json`, which is the opposite of what you'd want on a machine you
-pre-configured for someone. Demoting legacy below `config.json` would fix that but breaks the plain
-rule that variables win over files. The chosen compromise is to keep the simple order and make the
-fallback loud — startup names every legacy variable in use, so a collision is visible rather than
-silent. Revisit if it ever actually bites.
+**`config.json` ends up above the legacy names, reversing what this document first proposed.** The
+original rule was "environment variables always beat files" — conventional, and it reads fine until
+you look at what these layers actually mean:
+
+- a `CHATGOD_`-prefixed variable is unambiguously meant for this app
+- `config.json` sitting next to the app is unambiguously meant for this app
+- an unprefixed `AZURE_TTS_KEY` is a *guess* that a generic name refers to us
+
+Since `config.json` is the mechanism for handing someone a configured machine, putting the ambiguous
+shim above it means a leftover variable from an unrelated tool silently beats the file written for
+them — and it fails looking like a bad key, which is the confusion the prefix exists to prevent. The
+two deliberate layers go on top; the compatibility shim goes underneath. Startup still names any
+legacy variable in use.
+
+**Secrets stay in plain text**, as the open question below leaned. Obfuscation would be fake security
+on a file in the user's own directory, and it would make the one useful operation — reading it to see
+what's set — harder. The example file says outright what it contains and how to treat it.
+
+**A malformed file is logged and ignored, not fatal.** Same rule as `characters.json`: a typo in JSON
+ten minutes before a stream should cost you the file's contents, not the stream. Startup prints the
+parse error and which source every setting actually came from, so "my edits aren't taking effect" is
+answerable by reading the first few lines of output.
 
 That keeps the current behaviour as a superset and makes the wizard possible. `config.json` holds the
 Twitch token and channel, Azure key and region — so it's secret, gitignored, and worth saying so in
@@ -266,13 +280,14 @@ with the Python bundled instead of located.
 Ordered for one non-technical user, with the split marked. Everything before the line is worth
 building now; everything after waits for a reason to exist.
 
-**A. `config.json` with env-var precedence.** No UI. Lets you hand over a pre-configured install and
-removes environment variables from her life entirely. Foundation for everything else.
+**A. `config.json` with env-var precedence — done.** No UI. `config.example.json` is the tracked
+template, `config.json` is gitignored, and setup is now "fill in four fields in a file you can see"
+rather than four invisible variables that don't reach open terminals.
 
-> **Half done.** `config.py` now owns every setting read, with the `CHATGOD_` prefix and legacy
-> fallback in place. What remains is the `config.json` layer itself: where the file lives, that it's
-> gitignored, and what happens on a malformed one (log and fall through to defaults, matching how
-> `characters.json` is specced).
+> Nothing writes the file yet, deliberately. The wizard (stage E) is what will, and a `save()`
+> written now against no caller would likely be wrong by the time one existed. `config.reload()` is
+> there for it, because a module-level cache with no way to refresh it is the kind of decision that's
+> invisible until it's expensive.
 
 **B. Launcher script — done.** `start.bat` finds Python 3.9–3.12, reuses a venv or creates `.venv`,
 installs dependencies on first run, starts the app and opens the control panel. No terminal, no

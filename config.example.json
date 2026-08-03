@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Copy this to config.json and fill in the four values. That file is gitignored",
+    "and the app never writes to it.",
+    "",
+    "THIS FILE HOLDS SECRETS IN PLAIN TEXT. Anyone who can read config.json can",
+    "post as your bot and spend your Azure quota. Don't put it in a screenshot, a",
+    "shared folder, or a repo. Obfuscating it would be fake security on a file in",
+    "your own directory, so it isn't obfuscated -- just treat it like a password.",
+    "",
+    "Every value is optional. Anything left out or left empty falls back to an",
+    "environment variable, so you can mix the two: put the channel here and keep",
+    "the token in CHATGOD_TWITCH_TOKEN if you prefer.",
+    "",
+    "Resolution order, first non-empty wins:",
+    "  CHATGOD_ environment variable  ->  this file  ->  old unprefixed variable  ->  default",
+    "",
+    "Delete the _comment key if you like; the app ignores keys it doesn't know."
+  ],
+
+  "twitch_token": "",
+  "twitch_channel": "",
+  "azure_key": "",
+  "azure_region": ""
+}

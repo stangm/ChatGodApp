@@ -751,8 +751,10 @@ if __name__=='__main__':
     missing = missing_required()
     if missing:
         print(f"\nNot set: {', '.join(missing)}.\n"
-              "  If you set them recently, reopen the terminal -- environment variables\n"
-              "  don't reach shells that were already open.")
+              "  Either copy config.example.json to config.json and fill it in, or set\n"
+              "  them as environment variables. If you set variables recently, reopen the\n"
+              "  terminal -- they don't reach shells that were already open, which is the\n"
+              "  single most common cause of this message.")
 
     if CHARACTERS_SOURCE == "file":
         print("\nCharacters: read from characters.json")

@@ -51,3 +51,7 @@ characters.json
 # Monthly Azure character count, written by usage.py. Per-machine bookkeeping, and
 # regenerable -- deleting it just restarts the count from zero.
 usage.json
+
+# YOUR TWITCH TOKEN AND AZURE KEY IN PLAIN TEXT. Never commit this.
+# config.example.json is the tracked template.
+config.json

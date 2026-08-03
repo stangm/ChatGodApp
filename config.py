@@ -16,24 +16,44 @@ three and keeping them in agreement. Now it is one function.
 
 Resolution order, first non-empty wins:
 
-    CHATGOD_-prefixed variable  ->  legacy variable  ->  built-in default
+    CHATGOD_-prefixed variable  ->  config.json  ->  legacy variable  ->  default
 
-`config.json` slots in between the legacy variable and the default when it lands.
+**config.json sits above the legacy names, which reverses what the design doc
+originally proposed.** The doc's rule was "environment variables always beat files",
+which is the conventional ordering and reads well until you look at what these
+particular layers mean:
 
-**Legacy names are kept, and still win over anything but the prefixed name.** Nothing
-breaks for an install that already has them set, or for anyone arriving from
-DougDoug's upstream README. But a legacy name is exactly the collision this module
-exists to prevent, so `legacy_in_use()` reports them and startup says so out loud --
-a silent fallback would preserve the bug while looking like a fix.
+- a `CHATGOD_`-prefixed variable is unambiguously meant for this app
+- `config.json` next to this app is unambiguously meant for this app
+- an unprefixed `AZURE_TTS_KEY` is a *guess* that a generic name refers to us
 
-An empty variable counts as unset. Windows makes it easy to end up with one set to
-the empty string, and treating that as "configured, with no value" produces a
-confusing failure much later.
+Since `config.json` is how a configured machine gets handed to someone, putting the
+ambiguous shim above it means a stale variable from an unrelated tool would silently
+beat the file that was deliberately written for them -- and the resulting failure
+looks like a bad key, which is the exact confusion the prefix exists to prevent. So
+the two deliberate layers go on top and the compatibility shim goes underneath.
+
+**Legacy names still work**, so nothing breaks for an install that already sets them
+or for anyone arriving from DougDoug's upstream README. But `legacy_in_use()` reports
+them and startup says so out loud: a silent fallback would preserve the collision
+risk while looking like a fix.
+
+An empty value counts as unset, in the file as well as the environment. Windows makes
+it easy to end up with a variable set to the empty string, and treating that as
+"configured, with no value" produces a confusing failure much later.
+
+**config.json holds secrets in plain text**, deliberately. Obfuscating them would be
+fake security on a file sitting in the user's own directory, and it would make the
+one thing you actually want -- reading it to check what's set -- harder. It's
+gitignored, and the example file says plainly what it contains.
 """
 
+import json
 import os
 from dataclasses import dataclass
 from typing import Callable, Optional
+
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
 
 @dataclass(frozen=True)
@@ -78,18 +98,94 @@ SPECS = {
 }
 
 
+# Parsed config.json, cached. None until first read; {} means "nothing usable".
+_config = None
+_config_state = "unread"   # unread | missing | ok | broken
+
+
+def _load_config():
+    """
+    Read config.json once and remember the outcome.
+
+    Three outcomes, kept apart because they mean different things to the operator:
+    the file isn't there (normal -- environment variables are still fully supported),
+    it's there and readable, or it's there and broken. The last one is the only one
+    worth shouting about, and it must not stop the app: a typo in a JSON file ten
+    minutes before a stream should cost you the file's contents, not the stream.
+    """
+    global _config, _config_state
+    if not os.path.exists(CONFIG_FILE):
+        _config, _config_state = {}, "missing"
+        return _config
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"config.json could not be read ({exc}); ignoring it and using "
+              "environment variables instead.")
+        _config, _config_state = {}, "broken"
+        return _config
+    if not isinstance(data, dict):
+        print("config.json isn't a JSON object; ignoring it.")
+        _config, _config_state = {}, "broken"
+        return _config
+    _config, _config_state = data, "ok"
+    return _config
+
+
+def reload():
+    """
+    Forget the cached config.json and read it again.
+
+    Nothing calls this yet. It exists because the setup wizard will write the file
+    while the app is running, and a module-level cache with no way to refresh it is
+    the kind of decision that's invisible until it's expensive.
+    """
+    global _config, _config_state
+    _config, _config_state = None, "unread"
+    return _load_config()
+
+
+def config_state():
+    """'missing', 'ok' or 'broken' -- for the startup report and diagnostics."""
+    if _config is None:
+        _load_config()
+    return _config_state
+
+
+def _from_config(key):
+    """This setting's value from config.json, or '' if absent or unusable."""
+    data = _config if _config is not None else _load_config()
+    value = data.get(key)
+    # Coerced rather than rejected: someone hand-editing JSON may well write a
+    # region as a bare word or a number, and refusing an otherwise fine value on a
+    # type technicality helps nobody.
+    if value is None or isinstance(value, (dict, list, bool)):
+        return ""
+    return str(value).strip()
+
+
 def resolve(key):
     """
     Return (value, source, name) for one setting.
 
-    source is 'env', 'legacy' or 'default'; name is the variable the value actually
-    came from, or None for a default. Callers that only want the value use setting().
+    source is 'env', 'config', 'legacy' or 'default'; name is where the value
+    actually came from, for the startup report. Callers that only want the value use
+    setting().
     """
     spec = SPECS[key]
-    for name, source in ((spec.env, "env"), (spec.legacy, "legacy")):
-        value = (os.getenv(name) or "").strip()
-        if value:
-            return (spec.normalize(value) if spec.normalize else value), source, name
+
+    value = (os.getenv(spec.env) or "").strip()
+    if value:
+        return (spec.normalize(value) if spec.normalize else value), "env", spec.env
+
+    value = _from_config(key)
+    if value:
+        return (spec.normalize(value) if spec.normalize else value), "config", "config.json"
+
+    value = (os.getenv(spec.legacy) or "").strip()
+    if value:
+        return (spec.normalize(value) if spec.normalize else value), "legacy", spec.legacy
 
     value = spec.default
     if value is not None and spec.normalize:
@@ -127,7 +223,13 @@ def startup_report():
     is present matters, but the key itself has no business in a terminal someone
     might be screen-sharing while streaming.
     """
+    state = config_state()
     lines = []
+    if state == "ok":
+        lines.append("  config.json: found")
+    elif state == "broken":
+        lines.append("  config.json: UNREADABLE -- ignored, see the error above")
+
     for key, spec in SPECS.items():
         value, source, name = resolve(key)
         if not value:

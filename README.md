@@ -59,20 +59,49 @@ If PowerShell blocks the activate script:
 > remove them by hand. `C:\dev\ChatGodApp` or similar. The venv doesn't have to live beside the code
 > either — and note a venv can't be moved once created, since it stores its own absolute path.
 
-### 2. Twitch
+### 2. Credentials — pick one of two ways
 
-Generate a token at <https://twitchtokengenerator.com/> — choose **Bot Chat Token**, with
-**`chat:read`** and **`chat:edit`** enabled. Copy the *Access Token*, not the refresh token.
+**Either** copy `config.example.json` to `config.json` and fill it in:
+
+```json
+{
+  "twitch_token": "yourtokenhere",
+  "twitch_channel": "yourchannel",
+  "azure_key": "your-key-here",
+  "azure_region": "eastus"
+}
+```
+
+**Or** set them as environment variables:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_TOKEN", "yourtokenhere", "User")
 [Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_CHANNEL", "yourchannel", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_KEY", "your-key-here", "User")
+[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_REGION", "eastus", "User")
 ```
+
+**The file is easier** — you can see what's in it, edit it, and it works the moment you save. It's
+also how you'd hand someone a machine that's ready to go. Variables are invisible, don't reach
+terminals that are already open, and a wrong one fails looking like something else entirely.
+
+You can mix them: a variable of the same name overrides the file, which makes it easy to test a
+different channel without touching your config.
+
+> `config.json` holds your token and key **in plain text**. It's gitignored, but treat it like a
+> password — not in screenshots, not in shared folders. It isn't obfuscated on purpose: that would
+> be fake security on a file in your own directory, and it would make it harder to check.
+
+### 3. Getting the credentials
+
+Generate a Twitch token at <https://twitchtokengenerator.com/> — choose **Bot Chat Token**, with
+**`chat:read`** and **`chat:edit`** enabled. Copy the *Access Token*, not the refresh token.
 
 The channel name is your channel, no URL and no `@` — case doesn't matter, it gets lowercased.
 
-**Close and reopen your terminal** — environment variables don't reach already-open shells. This is
-the single most common "it works for everyone else" failure.
+**If you used environment variables, close and reopen your terminal** — they don't reach already-open
+shells. This is the single most common "it works for everyone else" failure, and it doesn't apply to
+`config.json`, which is read fresh each time the app starts.
 
 **Check:** `python -c "from config import setting; print(setting('twitch_token')[:10])"` should print
 characters, not an error.
@@ -83,20 +112,16 @@ characters, not an error.
 > would plausibly also use, and a collision hands your app someone else's credentials while looking
 > like a bad key. The app names any legacy variable it falls back to at startup.
 
-### 3. Azure Speech
+### 4. Azure Speech
 
 In the [Azure portal](https://portal.azure.com): *Create a resource* → **Speech** → Create. Any
 nearby region, pricing tier **F0 (Free)** — 500,000 characters/month, far more than a stream uses.
 
-Copy Key 1 and the Region from *Keys and Endpoint*. The region must be the short form
-(`eastus`, `westus2`), **not** the display name:
+Copy Key 1 and the Region from *Keys and Endpoint* into whichever of the two you chose above. The
+region must be the short form (`eastus`, `westus2`), **not** the display name — "East US" is the
+single most common mistake here, and it fails looking like a bad key.
 
-```powershell
-[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_KEY", "your-key-here", "User")
-[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_REGION", "eastus", "User")
-```
-
-Reopen the terminal again, then test Azure on its own:
+Then test Azure on its own:
 
 ```powershell
 python azure_text_to_speech.py
@@ -135,7 +160,7 @@ Multilingual set — Alloy, Echo, Fable, Nova, Onyx, Shimmer) bill separately at
 synthesis, leaving them in the dropdown is a way to run up a bill by accident. Pass
 `--include-premium` if you're on a paid tier and want them.
 
-### 4. Character art
+### 5. Character art
 
 Drop two PNGs per player in `static/characters/`, named by convention:
 
@@ -149,7 +174,7 @@ Same dimensions for both, mouth closed and mouth open. Transparent backgrounds w
 files elsewhere under `static/`, add `image_closed` / `image_open` to that player's entry in
 `players.py`.
 
-### 5. OBS
+### 6. OBS
 
 Add one **Browser** source per player:
 
