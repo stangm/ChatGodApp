@@ -54,9 +54,10 @@ If PowerShell blocks the activate script:
 > **Optional:** `winget install ffmpeg`. `pydub` needs it for the gTTS fallback, which is the path
 > you land on when Azure fails — exactly when you don't want a second error.
 
-> **OneDrive users:** a `.venv` inside a synced folder uploads thousands of files for no benefit.
-> It's in `.gitignore`, but also right-click the folder → *Always keep on this device* → off, or
-> put the venv elsewhere entirely (`python -m venv C:\venvs\chatgod`).
+> **Keep the repo out of OneDrive, Dropbox or Google Drive.** A `.git` directory inside a synced
+> folder produces lock files that can't be deleted, and every git command afterwards fails until you
+> remove them by hand. `C:\dev\ChatGodApp` or similar. The venv doesn't have to live beside the code
+> either — and note a venv can't be moved once created, since it stores its own absolute path.
 
 ### 2. Twitch
 

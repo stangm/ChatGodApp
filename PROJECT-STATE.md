@@ -49,8 +49,8 @@ switching to a voice with no styles (all 15 `en-AU` voices have none, which is t
 `feature/character-library` is at `a95243c` and pushed — the whole library, the display toggles, the
 caption layout and the stylesheet cache-buster in one commit. **Not yet merged to `main`.**
 
-> **Commits and pushes have to be run by Mark**, not from the sandbox — see the git/OneDrive lock
-> problem below.
+All branches are merged into `main` and the old ones deleted. To confirm that yourself at any point:
+`git fetch --prune` then `git branch -a --no-merged main` — empty output means nothing is outstanding.
 
 ### Character library — stages A and A2 are built, and PARTLY VERIFIED
 
@@ -171,20 +171,28 @@ old unprefixed names still work; startup names any it falls back to.
 
 ## Things that will waste your time
 
-**Git can't be driven from the sandbox, and reads need `--no-optional-locks`.** The OneDrive mount
-lets git *create* `.git/index.lock` but not remove it. Plain `git status` writes — it refreshes the
-index — so even a read-only-looking check leaves a stale lock that blocks Mark's next command.
+**The repo lives at `C:\dev\ChatGodApp`, deliberately outside OneDrive.** It used to sit in
+`OneDrive\scripts\`, and a `.git` directory inside a synced folder caused three separate problems in
+one session: `.git/index.lock` files that couldn't be removed (blocking every subsequent git
+command), sync churn over `.venv`, and ref directories held open during branch deletion. All three
+went away with the move. **Don't put it back**, and don't put the venv inside the repo.
 
-- Reads: `git --no-optional-locks status -s`, `git log`, `git diff`. Verified not to create a lock.
-- Writes: never from the sandbox. Write the files, hand Mark the commit command.
-- Stale lock: `Remove-Item .git\index.lock` is safe whenever no git command is actually running.
+**What the move did and didn't fix.** The `index.lock` problem is gone — plain `git status` from the
+sandbox no longer leaves one, so reads are safe without `--no-optional-locks`. But the underlying
+cause was the *mount*, not OneDrive: the sandbox still can't unlink files it creates under `.git`, so
+`git add` leaves stray `tmp_obj_*` files in `.git/objects` and **writes still belong to Mark**. The
+sandbox also has no git identity, so a commit fails outright.
 
-Moving the repo out of OneDrive would be better hygiene generally — a `.git` directory in a synced
-folder invites locking and sync conflicts in the object store — but it may not change the sandbox
-unlink behaviour, which is a property of the mount.
+- Reads from the sandbox: fine.
+- Writes: still hand Mark the command.
+- Stray temp objects are harmless; `git gc --prune=now` clears them.
+- Stale `index.lock`: `Remove-Item .git\index.lock`, safe when no git command is running.
 
-**`.venv/` lives inside the repo.** It's gitignored, but recursive greps hit thousands of dependency
-files. Exclude it.
+**The commit identity is repo-local.** `user.email` is
+`79151320+stangm@users.noreply.github.com`, set on this clone rather than globally. GitHub rejects
+pushes carrying the private gmail address, so a fresh clone that inherits only the global config
+will push once and be refused. Fix is `git config user.email` then
+`git commit --amend --reset-author --no-edit`.
 
 **Environment variables don't reach terminals that are already open.** This is the single most common
 "it works for everyone else" failure and it looks exactly like a bad token.

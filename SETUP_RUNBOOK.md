@@ -34,9 +34,13 @@ connects to OBS at all by default).
 **1.1 Check your version.** PowerShell, in the repo folder:
 
 ```powershell
-cd $HOME\OneDrive\scripts\ChatGodApp
+cd C:\dev\ChatGodApp
 python --version
 ```
+
+> **Put the repo somewhere that isn't synced** — `C:\dev\` rather than OneDrive, Dropbox or Google
+> Drive. A `.git` directory inside a synced folder causes lock files that can't be deleted, which
+> blocks git commands until you remove them by hand. This project learned that the slow way.
 
 Anything 3.9–3.12 is fine. See gotcha #4 for 3.13+.
 
@@ -50,9 +54,9 @@ python -m venv .venv
 If PowerShell blocks the activate script:
 `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
 
-> **OneDrive note:** a `.venv` inside OneDrive will sync thousands of files for no benefit. It's in
-> `.gitignore` already, but also right-click the folder → *Always keep on this device* → off, or put
-> the venv outside OneDrive entirely (`python -m venv C:\venvs\chatgod`).
+> **A venv can't be moved once created** — `pyvenv.cfg` and the `Scripts\*.exe` shims hold its own
+> absolute path, so relocating the folder breaks it. If you want it elsewhere, create it there:
+> `python -m venv C:\venvs\chatgod`. It doesn't need to live beside the code.
 
 **1.3 Install dependencies.**
 
