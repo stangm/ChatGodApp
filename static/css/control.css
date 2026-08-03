@@ -45,6 +45,98 @@ h1 { font-size: 22px; margin: 0; font-weight: 500; }
     line-height: 1.6;
 }
 
+/* ---- setup screen -----------------------------------------------------------
+
+   Shares this stylesheet with the control panel on purpose: they're the same
+   application to the person using them, and a second stylesheet would drift.
+*/
+
+h2.section {
+    font-size: 15px;
+    font-weight: 500;
+    margin: 28px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--panel-edge);
+}
+
+.hint.ok-note { border-left: 2px solid var(--ok); padding-left: 10px; }
+
+.field-note {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: -4px 0 12px;
+}
+
+.slot-now {
+    margin: 12px 0;
+    padding: 10px 0;
+    border-top: 1px solid var(--panel-edge);
+    border-bottom: 1px solid var(--panel-edge);
+    font-size: 13px;
+}
+
+.slot-voice { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* The generic button style lives further down with the control panel's. These only
+   add the two variants the setup screen needs -- a second base rule here would be
+   silently overridden by that one, since they'd have equal specificity and it comes
+   later. */
+
+button.secondary {
+    font-size: 12px;
+    color: var(--muted);
+    background: transparent;
+}
+
+/* Destructive, so it looks it -- outlined rather than filled, because a red block
+   next to a Save button is exactly what a mis-click looks for. */
+button.danger {
+    color: var(--bad);
+    background: transparent;
+    border: 1px solid var(--bad);
+    margin-top: 10px;
+}
+
+button.danger:hover { color: var(--bg); background: var(--bad); }
+
+.new-character { border-style: dashed; }
+
+.art {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--panel-edge);
+}
+
+/* Checkerboard behind the thumbnails, because the art is transparent PNG and on a
+   dark panel a dark character looks identical to a missing file. */
+.art-now {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: 6px 0 12px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.art-now img {
+    width: 72px;
+    height: auto;
+    border-radius: 4px;
+    background-color: #6b6b78;
+    background-image:
+        linear-gradient(45deg, #4a4a55 25%, transparent 25%, transparent 75%, #4a4a55 75%),
+        linear-gradient(45deg, #4a4a55 25%, transparent 25%, transparent 75%, #4a4a55 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 6px 6px;
+}
+
+input[type="file"] {
+    width: 100%;
+    font-size: 11px;
+    color: var(--muted);
+}
+
 /* ---- health rows ------------------------------------------------------------
 
    Sits above everything because it's meant to be read before going live, and it
@@ -328,3 +420,7 @@ input[type="text"], select {
     min-height: 30px;
     word-break: break-word;
 }
+
+/* Cross-links between the two operator pages. */
+.status a { color: var(--accent); text-decoration: none; }
+.status a:hover { text-decoration: underline; }

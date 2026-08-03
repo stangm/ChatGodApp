@@ -1,0 +1,236 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Chat God &mdash; Characters</title>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ static_v('css/control.css') }}">
+</head>
+<body>
+
+    <header>
+        <h1>Chat God &mdash; Characters</h1>
+        <div class="status"><a href="/control">back to the control panel</a></div>
+    </header>
+
+    {% if request.args.get('msg') %}
+    <p class="hint {{ 'ok-note' if request.args.get('ok') == '1' else 'warn' }}">
+        {{ request.args.get('msg') }}
+    </p>
+    {% endif %}
+
+    <p class="hint">
+        A <strong>character</strong> is a costume: art, a name shown on stream, a default voice, and
+        what appears beneath it. A <strong>player slot</strong> is a position on stream that a
+        character is assigned to, and that chatters take turns speaking through. Assigning a
+        character changes the costume, not who's wearing it.
+    </p>
+
+    {% if characters_source == 'defaults' %}
+    <p class="hint">
+        No <code>characters.json</code> yet. Every slot is using its <code>players.py</code> voice and
+        the <code>player&lt;N&gt;-*.png</code> art. Create a character below and assign it &mdash; the
+        file is written for you, and slots you don't touch carry on exactly as they are.
+    </p>
+    {% endif %}
+
+    <!-- ---------------------------------------------------------------- slots -->
+
+    <h2 class="section">Player slots</h2>
+
+    <div class="panels">
+        {% for number, config in players.items() %}
+        {% set current = resolved[number] %}
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Player {{ number }}</h2>
+                <code class="keyphrase">{{ config.keyphrase }}</code>
+            </div>
+
+            <form method="post" action="/setup/assign">
+                <input type="hidden" name="player" value="{{ number }}">
+                <label class="field">
+                    <span class="label">Character</span>
+                    <select name="character">
+                        <!-- Two different "nothings": inherit the old filename
+                             convention, or draw nothing at all. -->
+                        <option value="" {% if slots.get(number) is none and number in slots %}selected{% endif %}>
+                            (empty &mdash; draw nothing)
+                        </option>
+                        {% for char_id, entry in characters.items() %}
+                        <option value="{{ char_id }}" {% if slots.get(number) == char_id %}selected{% endif %}>
+                            {{ entry.display_name or char_id }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <button type="submit">Assign</button>
+            </form>
+
+            <div class="slot-now">
+                <span class="label">Now showing</span>
+                {% if current.id %}
+                    <strong>{{ current.display_name or current.id }}</strong>
+                {% else %}
+                    <em>nothing</em>
+                {% endif %}
+                <div class="slot-voice">
+                    {{ live.get(number, {}).get('name', current.default_voice) }}
+                    / {{ live.get(number, {}).get('style', current.default_style) }}
+                </div>
+            </div>
+
+            {% if current.id and current.id in characters %}
+            <form method="post" action="/setup/save-default">
+                <input type="hidden" name="player" value="{{ number }}">
+                <button type="submit" class="secondary">Save this voice as the default</button>
+            </form>
+            {% endif %}
+        </section>
+        {% endfor %}
+    </div>
+
+    <!-- ----------------------------------------------------------- characters -->
+
+    <h2 class="section">Characters</h2>
+
+    <div class="panels">
+        {% for char_id, entry in characters.items() %}
+        <section class="panel">
+            <form method="post" action="/setup/character">
+                <input type="hidden" name="id" value="{{ char_id }}">
+
+                <div class="panel-head">
+                    <h2>{{ entry.display_name or char_id }}</h2>
+                    <code class="keyphrase">{{ char_id }}</code>
+                </div>
+
+                <label class="field">
+                    <span class="label">Name on stream</span>
+                    <input type="text" name="display_name" value="{{ entry.display_name or '' }}"
+                           placeholder="leave empty to show no name">
+                </label>
+
+                <label class="field">
+                    <span class="label">Default voice</span>
+                    <select name="default_voice">
+                        <option value="">(use players.py)</option>
+                        {% for locale_label, group in voice_groups %}
+                        <optgroup label="{{ locale_label }}">
+                            {% for value, display in group %}
+                            <option value="{{ value }}" {% if value == entry.default_voice %}selected{% endif %}>{{ display }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="label">Default style</span>
+                    <select name="default_style">
+                        {% for value in styles %}
+                        <option value="{{ value }}" {% if value == entry.get('default_style', 'random') %}selected{% endif %}>{{ value }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <div class="shows">
+                    <span class="label">Show on stream</span>
+                    {% for flag in display_flags %}
+                    <label class="toggle">
+                        <input type="checkbox" name="{{ flag }}" {% if entry.get(flag, True) %}checked{% endif %}>
+                        <span>{{ flag | replace('show_', '') | replace('_', ' ') }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+
+                <button type="submit">Save</button>
+            </form>
+
+            <!-- Separate form because it's multipart and it writes files. Keeping it
+                 out of the save form means a text edit never re-uploads art. -->
+            <form method="post" action="/setup/upload" enctype="multipart/form-data" class="art">
+                <input type="hidden" name="id" value="{{ char_id }}">
+                <span class="label">Art</span>
+
+                <div class="art-now">
+                    {% if entry.art_closed %}
+                        <img src="{{ url_for('static', filename=entry.art_closed) }}" alt="">
+                    {% else %}
+                        <em>none yet</em>
+                    {% endif %}
+                    {% if entry.art_open %}
+                        <img src="{{ url_for('static', filename=entry.art_open) }}" alt="">
+                    {% endif %}
+                </div>
+
+                <label class="field">
+                    <span class="label">Mouth closed</span>
+                    <input type="file" name="art_closed" accept="image/png">
+                </label>
+                <label class="field">
+                    <span class="label">Mouth open</span>
+                    <input type="file" name="art_open" accept="image/png">
+                </label>
+
+                <p class="field-note">
+                    PNG, both the same size, under 8MB. Upload one or both. Changing the art can
+                    change the browser source size &mdash; check the number on the control panel
+                    afterwards.
+                </p>
+
+                <button type="submit" class="secondary">Upload art</button>
+            </form>
+
+            <form method="post" action="/setup/delete"
+                  onsubmit="return confirm('Delete {{ entry.display_name or char_id }}? The art files stay on disk.');">
+                <input type="hidden" name="id" value="{{ char_id }}">
+                <button type="submit" class="danger">Delete</button>
+            </form>
+        </section>
+        {% endfor %}
+
+        <!-- New characters use the same endpoint: an id that doesn't exist yet is
+             created, one that does is updated. One code path, one form shape. -->
+        <section class="panel new-character">
+            <form method="post" action="/setup/character">
+                <div class="panel-head"><h2>New character</h2></div>
+
+                <label class="field">
+                    <span class="label">Id</span>
+                    <input type="text" name="id" placeholder="wizard" required>
+                </label>
+                <p class="field-note">
+                    Short, lowercase, no spaces. This is the internal name &mdash; it never appears on
+                    stream, and keeping it stable means renaming the character on screen doesn't break
+                    the slots pointing at it.
+                </p>
+
+                <label class="field">
+                    <span class="label">Name on stream</span>
+                    <input type="text" name="display_name" placeholder="Henry Potter">
+                </label>
+                <p class="field-note">
+                    Create it first, then upload its art &mdash; the filenames are derived from the
+                    id, so it has to exist before there's anywhere to put them.
+                </p>
+
+                <div class="shows">
+                    <span class="label">Show on stream</span>
+                    {% for flag in display_flags %}
+                    <label class="toggle">
+                        <input type="checkbox" name="{{ flag }}" checked>
+                        <span>{{ flag | replace('show_', '') | replace('_', ' ') }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+
+                <button type="submit">Create</button>
+            </form>
+        </section>
+    </div>
+
+</body>
+</html>

@@ -79,9 +79,29 @@ toggle that changes the size. The control panel toggles all three live and repor
 Mark's own `characters.json` is currently a copy of the example — Henry Potter in slot 1, The
 Narrator in slot 2.
 
-Stages C–F (the `/setup` screen, assignment, art upload, casts) are not built. Runtime assignment
-doesn't exist, so the character in a slot is fixed for the session and `DisplayManager.reset_to()`
-has no caller yet.
+### Stages C and D are built — `/setup` and runtime assignment (**untested**)
+
+`/setup` lists the player slots and the character library. You can create and edit characters, assign
+them to slots, save a slot's live voice back onto its character, and delete (refused while assigned).
+`characters.py` grew a `Library` class with an atomic write path; the module-level `load()` is kept
+as a shim so nothing else changed.
+
+Assigning is the deliberate reset point — voice, style and captions snap to the new character's
+defaults, and the overlay swaps art in place over an `art_changed` socket event with cache-busted
+URLs. Editing a character that's already on screen redraws it *without* resetting live values.
+
+**`Library.save()` preserves top-level keys it doesn't understand**, so the `_comment` block and the
+future `casts` / `appearance` sections survive a rewrite. Losing those silently is the obvious way
+this could have gone wrong.
+
+Stage E is built too: art uploads on `/setup`. Filenames are derived from the character id rather
+than taken from the upload — a user-supplied filename is a path traversal, so ids are constrained to
+letters, numbers, hyphens and underscores. The closed/open pair is validated together before either
+frame is written, because mismatched dimensions make the character jump when it speaks and writing
+one frame would create exactly that state. Art overwrites in place, which only works because
+`art_url()` cache-busts on mtime.
+
+Stages F (casts) and G (appearance) are not built.
 
 ### Not done
 
@@ -92,16 +112,17 @@ has no caller yet.
 2. **Layer-2 state lives in two managers.** `TTSManager.voices` holds live voice, `DisplayManager`
    holds live captions, for the same slot. They should probably become one slot-state object when
    assignment lands — noted in `display_manager.py`.
-3. **The rest of the character library** — `DESIGN_CHARACTER_LIBRARY.md`, stages C–G. Stage G is an
+3. **The rest of the character library** — `DESIGN_CHARACTER_LIBRARY.md`, stages F and G. Stage G is an
    appearance endpoint: typeface, caption sizes and mouth tuning out of source and into
-   `characters.json`, applied live over the socket. Independent of C–F, and the sizes half is cheaper
+   `characters.json`, applied live over the socket. Independent of F, and the sizes half is cheaper
    than it sounds because every caption size is already a CSS custom property. Font selection is the
    expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
    family locally when it's picked.
 4. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
    the **rolling log file**, then E onwards (the wizard) which only pays off at more than one user.
 5. **`templates/index.html` is still orphaned.** 307 lines of superseded markup that no route
-   renders, now diverged further from `control.html`. Delete or repurpose it for `/setup`.
+   renders. `/setup` was written fresh rather than repurposing it, so this is now just dead code —
+   delete it.
 
 ---
 
@@ -133,6 +154,7 @@ sound natively and no OBS plugin or Move filter is involved any more.
 | `azure_text_to_speech.py` | Synthesis, style resolution, gTTS fallback |
 | `fetch_voices.py` | Builds `voices.json` from Azure. Run manually |
 | `templates/control.html` | Operator panel. **Never** put this in OBS |
+| `templates/setup.html` | Character library — create, edit, assign, delete |
 | `templates/overlay.html` | The on-stream graphic |
 | `templates/index.html` | **Orphaned.** 307 lines, no route renders it |
 
@@ -275,7 +297,21 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
 
 ## Picking it back up
 
-**`config.json` support is written but has never run.** Verify that first:
+**Two things are written but have never run: `/setup` (stages C and D) and `config.json`.**
+
+For `/setup`, in this order — each exercises a different write path:
+
+- Open `/setup` with no `characters.json`. It should list your three slots using the filename
+  convention, and **write nothing** until you act.
+- Create a character, assign it to player 1. The overlay should swap art **without a refresh**, and
+  `characters.json` should appear.
+- Change the voice on the control panel, then hit *Save this voice as the default*. Reassign the
+  slot — it should come back with that voice.
+- Try deleting a character that's assigned. It should refuse and name the slot.
+- Put `_comment` back into `characters.json` by hand, then save something in `/setup`. The comment
+  must survive.
+
+For `config.json`:
 
 - Copy `config.example.json` to `config.json`, fill it in, unset the environment variables, restart.
   Startup should print `config.json: found` and `(from config.json)` against each setting.
@@ -306,5 +342,5 @@ to end, and the reported width input recalculating at values other than 500.
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 2 Aug 2026 — `config.json` completes install stage A (**untested**); status panel and
-diagnostics added; `start.bat` working; character library A and A2 verified on stream.
+Last updated: 2 Aug 2026 — character library stages C, D and E built (**untested**): /setup, runtime
+assignment, save-as-default, art upload. `config.json` also untested. A/A2, launcher, status panel working.

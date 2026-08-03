@@ -22,7 +22,9 @@ running rather than refusing to start ten minutes before a stream.
 
 import json
 import os
+import re
 import struct
+import threading
 
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 
@@ -151,51 +153,83 @@ def _read_file():
     return data
 
 
-def load():
+class Library:
     """
-    Resolve every slot to a Character.
+    The character library, as an editable thing rather than a one-shot read.
 
-    Returns (slots, source) where slots is {number: Character} covering exactly the
-    slots in PLAYER_CONFIG, and source is 'file' or 'defaults' -- the app says which
-    at startup, because "my edits aren't taking effect" is otherwise a silent
-    failure.
+    Stage A only ever read `characters.json` at startup, so a module function that
+    returned resolved slots was enough. Assignment needs more: the raw entries (to
+    list and edit them), the slot map (to change it), and a way to write the file
+    back. This holds all three and derives the resolved view on demand.
 
-    An empty slot is a Character with no art, which the overlay renders as nothing.
-    An unknown character id is a typo, so it warns and falls back to the convention:
-    a mistyped name silently blanking a slot mid-stream is the worse outcome.
+    **Unknown top-level keys are preserved on write.** The file already carries
+    `_comment` from the example, and the design has `casts` and `appearance` blocks
+    arriving later. Rewriting the file from only the keys this class understands
+    would silently delete whatever it didn't -- and the first person to notice would
+    be someone whose casts vanished when they renamed a character.
     """
-    data = _read_file()
-    if data is None:
-        return {n: _conventional(n, c) for n, c in PLAYER_CONFIG.items()}, "defaults"
 
-    library = data.get("characters") or {}
-    assignments = data.get("slots") or {}
-    slots = {}
+    def __init__(self):
+        self.characters = {}    # id -> raw dict, as stored
+        self.slots = {}         # number -> char_id, or None for deliberately empty.
+                                # A missing key means "not mentioned", which is a
+                                # third state: fall back to the naming convention.
+        self.extra = {}         # top-level keys this class doesn't interpret
+        self.source = "defaults"
+        self._lock = threading.Lock()
 
-    for number, config in PLAYER_CONFIG.items():
-        if number not in assignments:
-            slots[number] = _conventional(number, config)
-            continue
+    # -- reading --------------------------------------------------------------
 
-        assigned = assignments[number]
-        char_id = assigned.get("character") if isinstance(assigned, dict) else assigned
+    def load(self):
+        """Read the file. Safe to call again; a bad file leaves defaults in place."""
+        data = _read_file()
+        if data is None:
+            self.characters, self.slots, self.extra = {}, {}, {}
+            self.source = "defaults"
+            return self
 
+        self.characters = dict(data.get("characters") or {})
+        self.extra = {k: v for k, v in data.items() if k not in ("characters", "slots")}
+
+        self.slots = {}
+        for number, assigned in (data.get("slots") or {}).items():
+            self.slots[number] = (assigned.get("character")
+                                  if isinstance(assigned, dict) else assigned)
+
+        self.source = "file"
+        return self
+
+    def resolved(self):
+        """
+        {number: Character} covering exactly the slots in PLAYER_CONFIG.
+
+        An empty slot is a Character with no art, which the overlay renders as
+        nothing. An unknown character id is a typo, so it warns and falls back to the
+        convention: a mistyped name silently blanking a slot mid-stream is worse than
+        a visible fallback.
+        """
+        return {number: self._resolve_one(number, config)
+                for number, config in PLAYER_CONFIG.items()}
+
+    def _resolve_one(self, number, config):
+        if number not in self.slots:
+            return _conventional(number, config)
+
+        char_id = self.slots[number]
         if char_id is None:
             # Deliberately empty. Every caption off as well as no art: an empty slot
             # that still reserved space for two blank boxes would push the browser
             # source taller than the nothing it draws.
-            slots[number] = Character(id="", display_name="",
-                                      **dict.fromkeys(DISPLAY_FLAGS, False))
-            continue
+            return Character(id="", display_name="",
+                             **dict.fromkeys(DISPLAY_FLAGS, False))
 
-        entry = library.get(char_id)
+        entry = self.characters.get(char_id)
         if entry is None:
             print(f"Slot {number} is assigned to unknown character {char_id!r}; "
                   "using the default art for that slot.")
-            slots[number] = _conventional(number, config)
-            continue
+            return _conventional(number, config)
 
-        slots[number] = Character(
+        return Character(
             id=char_id,
             display_name=entry.get("display_name", ""),
             art_closed=entry.get("art_closed"),
@@ -205,7 +239,116 @@ def load():
             **{flag: entry.get(flag, True) for flag in DISPLAY_FLAGS},
         )
 
-    return slots, "file"
+    # -- writing --------------------------------------------------------------
+
+    def save(self):
+        """
+        Write the file atomically. Returns (ok, message).
+
+        Same pattern as usage.py: write a temp file then os.replace, so a crash
+        mid-write can't leave a truncated characters.json -- which would take the
+        whole library with it rather than one edit.
+
+        Writing makes this file the app's own, which is why `extra` exists: anything
+        the class didn't parse goes back untouched.
+        """
+        payload = dict(self.extra)
+        payload["characters"] = self.characters
+        payload["slots"] = {n: {"character": c} for n, c in self.slots.items()}
+
+        tmp = CHARACTERS_FILE + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, indent=2, sort_keys=False)
+                fh.write("\n")
+            os.replace(tmp, CHARACTERS_FILE)
+        except (OSError, TypeError, ValueError) as exc:
+            return False, f"Couldn't write characters.json: {exc}"
+
+        self.source = "file"
+        return True, "Saved."
+
+    def assign(self, number, char_id):
+        """
+        Put a character in a slot. char_id of None empties it deliberately.
+
+        Returns (ok, message). The caller is responsible for resetting the slot's
+        live voice and display state -- that's a deliberate reset point and it lives
+        with the managers that own that state, not here.
+        """
+        if number not in PLAYER_CONFIG:
+            return False, f"There's no player {number}."
+        if char_id is not None and char_id not in self.characters:
+            return False, f"There's no character called {char_id!r}."
+
+        with self._lock:
+            self.slots[number] = char_id
+            return self.save()
+
+    def upsert(self, char_id, fields):
+        """
+        Create or update a character. Returns (ok, message).
+
+        Merges rather than replaces, so a form that only sends the fields it edits
+        can't blank the ones it didn't. Unknown keys are kept for the same reason
+        `extra` exists at the top level.
+        """
+        char_id = (char_id or "").strip()
+        if not char_id:
+            return False, "A character needs an id."
+        # Enforced here as well as at upload, because the id is what uploaded
+        # filenames are derived from -- letting an unusable one into the library
+        # would mean creating a character that can never have art.
+        if not valid_id(char_id):
+            return False, ("Ids can only use letters, numbers, hyphens and "
+                           "underscores, and must start with a letter or number.")
+
+        with self._lock:
+            entry = dict(self.characters.get(char_id) or {})
+            for key, value in fields.items():
+                if key in DISPLAY_FLAGS:
+                    entry[key] = bool(value)
+                elif value is None or value == "":
+                    # Empty means "no opinion" rather than "set to empty": clearing
+                    # default_voice should fall back to players.py, not store "".
+                    entry.pop(key, None)
+                else:
+                    entry[key] = str(value).strip()
+            self.characters[char_id] = entry
+            return self.save()
+
+    def delete(self, char_id):
+        """
+        Remove a library entry. The art files on disk are left alone.
+
+        **Refused while the character is assigned to a slot.** One guard, and it
+        can't surprise anyone mid-stream. A web form that silently blanks a slot on
+        stream is alarming the one time it's wrong.
+        """
+        if char_id not in self.characters:
+            return False, f"There's no character called {char_id!r}."
+
+        in_use = [n for n, c in self.slots.items() if c == char_id]
+        if in_use:
+            where = ", ".join(sorted(in_use))
+            return False, (f"{char_id} is assigned to player {where}. "
+                           "Unassign it first, then delete.")
+
+        with self._lock:
+            self.characters.pop(char_id, None)
+            ok, message = self.save()
+            return ok, "Deleted. The art files are still on disk." if ok else message
+
+
+def load():
+    """
+    Backwards-compatible shim: (slots, source), as stage A returned.
+
+    Kept because the resolved view is what most of the app wants, and it reads
+    better than constructing a Library at every call site that only needs slots.
+    """
+    library = Library().load()
+    return library.resolved(), library.source
 
 
 # ---------------------------------------------------------------------------
@@ -213,11 +356,40 @@ def load():
 # ---------------------------------------------------------------------------
 
 
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+# Per file. Large enough for any sensible character, small enough that a browser
+# source doesn't choke -- a 40MB PNG loads fine and then makes OBS miserable.
+MAX_ART_BYTES = 8 * 1024 * 1024
+
+# Character ids become filenames, so they have to be safe to put in a path. A
+# user-supplied id containing a slash or ".." would otherwise let an upload write
+# outside static/characters/, which is the classic way a file upload becomes a
+# remote write primitive.
+ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def png_size(header):
+    """
+    (width, height) from the first 24 bytes of a PNG, or None if it isn't one.
+
+    Takes bytes rather than a path so the same check works on an upload still in
+    memory and on a file already on disk. Reads the IHDR header directly rather than
+    pulling in Pillow for eight bytes.
+    """
+    if len(header) < 24 or header[:8] != PNG_MAGIC:
+        return None
+    try:
+        width, height = struct.unpack(">II", header[16:24])
+    except struct.error:
+        return None
+    return (width, height) if width and height else None
+
+
 def art_size(relative_path):
     """
     (width, height) of a PNG under static/, or None if it can't be determined.
 
-    Reads the IHDR header directly rather than pulling in Pillow for eight bytes.
     None is a real answer -- a missing file, or art that isn't a PNG -- and callers
     report the size as unknown rather than guessing, since a wrong number here means
     a clipped message box that's baffling to diagnose.
@@ -227,16 +399,66 @@ def art_size(relative_path):
     path = os.path.join(STATIC_ROOT, relative_path.replace("/", os.sep))
     try:
         with open(path, "rb") as fh:
-            header = fh.read(24)
+            return png_size(fh.read(24))
     except OSError:
         return None
-    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n":
-        return None
+
+
+def valid_id(char_id):
+    """Whether a character id is safe to use as part of a filename."""
+    return bool(ID_PATTERN.match(char_id or ""))
+
+
+def art_path(char_id, which):
+    """Where a character's uploaded art lives. Derived, never user-supplied."""
+    return f"characters/{char_id}-{which}.png"
+
+
+def save_art(char_id, which, data, other_size=None):
+    """
+    Write one uploaded PNG. Returns (ok, message, relative_path_or_None).
+
+    Validation, in the order that gives the most useful message first:
+
+    1. **Actually a PNG**, by magic bytes rather than by filename. An extension is a
+       claim; the header is evidence.
+    2. **Within the size cap.**
+    3. **Matching its counterpart's dimensions.** This is the one that matters. Art
+       whose open and closed frames differ in size makes the character visibly jump
+       every time it speaks -- and on stream that reads as a rendering bug rather
+       than as a mismatched pair, so it's worth refusing outright rather than
+       accepting and letting someone discover it live.
+    """
+    if not valid_id(char_id):
+        return False, "That character id can't be used as a filename.", None
+    if which not in ("closed", "open"):
+        return False, f"Unknown art slot {which!r}.", None
+
+    if len(data) > MAX_ART_BYTES:
+        mb = MAX_ART_BYTES // (1024 * 1024)
+        return False, f"That file is over {mb}MB. Resize it and try again.", None
+
+    size = png_size(data[:24])
+    if size is None:
+        return False, "That isn't a PNG. Save it as a PNG and try again.", None
+
+    if other_size and size != other_size:
+        return False, (f"The two images are different sizes -- {size[0]}x{size[1]} "
+                       f"and {other_size[0]}x{other_size[1]}. They must match, or the "
+                       "character jumps every time its mouth moves."), None
+
+    relative = art_path(char_id, which)
+    full = os.path.join(STATIC_ROOT, relative.replace("/", os.sep))
     try:
-        width, height = struct.unpack(">II", header[16:24])
-    except struct.error:
-        return None
-    return (width, height) if width and height else None
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        tmp = full + ".tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, full)
+    except OSError as exc:
+        return False, f"Couldn't save the image: {exc}", None
+
+    return True, f"Uploaded {size[0]}x{size[1]}.", relative
 
 
 def size_parts(character, flags):

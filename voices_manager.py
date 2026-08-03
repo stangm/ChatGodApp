@@ -67,6 +67,22 @@ class TTSManager:
             return "random"
         return None
 
+    def reset_to(self, user_number, character):
+        """
+        Put a slot's voice back to its character's defaults.
+
+        The counterpart to DisplayManager.reset_to, called when a character is
+        assigned. Falls back to players.py when the character names no voice, which
+        keeps a half-filled library working rather than leaving a slot mute.
+        """
+        self.voices[user_number] = {
+            "name": character.default_voice or PLAYER_CONFIG[user_number]["voice_name"],
+            "style": character.default_style,
+        }
+        print(f"Player {user_number}: voice reset to "
+              f"{self.voices[user_number]['name']} / {self.voices[user_number]['style']}")
+        return self.voices[user_number]
+
     def update_voice_style(self, user_number, voice_style):
         voice = self.voices.get(user_number)
         if voice is None:

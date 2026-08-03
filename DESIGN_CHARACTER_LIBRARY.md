@@ -1,6 +1,9 @@
 # Design: character library and setup screen
 
-**Status: design only.** Nothing implemented yet. Written on `feature/art-setup-screen`.
+**Status: stages A, A2, B, C, D and E are built.** Remaining: F (casts) and G (appearance). The
+staging section at the bottom marks each one, and the notes under the built stages record what
+changed during implementation — several decisions here were revised once they met reality, and those
+revisions are marked inline rather than by rewriting the original reasoning.
 
 **Goal.** Change a player's character art and voice between streams — or during one — without
 editing a `.py` file or restarting. Target user is the streamer mid-show, one hand on the control
@@ -467,13 +470,43 @@ per player and reports the source size with a width input and a copy button.
 **B. `fetch_voices.py` and `voices.json`.** Replace the hardcoded voice list; filter style dropdowns
 by `style_list`. Independently useful — fixes the silent-style bug on its own, with no setup screen.
 
-**C. `/setup` read-only.** Render the library and current assignments. No writes.
+**C. `/setup` read-only — done**, and **D. Assignment and save-as-default — done.** Built together,
+because a read-only screen is a page you look at once and a write path with no screen can't be
+exercised. `/setup` lists the slots and the library, and the four write endpoints are assign,
+create/update, save-as-default and delete.
 
-**D. Assignment and save-as-default.** The two write paths that don't involve file uploads, plus
-`art_changed` on the socket.
+> **Creating and editing characters landed here rather than at E**, since neither involves a file
+> upload — art paths are typed as text for now. That leaves E as purely the upload problem, which is
+> the part with validation and overwrite questions attached.
+>
+> **`Library` preserves top-level keys it doesn't understand.** The file already carries `_comment`,
+> and `casts` and `appearance` are specced to live alongside. Rewriting it from only the known keys
+> would silently delete the rest, and the first person to notice would be someone whose casts
+> vanished when they renamed a character.
+>
+> **Writes are atomic** — temp file then `os.replace`, the same pattern as `usage.py`. A crash
+> mid-write would otherwise take the whole library rather than one edit.
+>
+> **Assignment resets the slot, editing doesn't.** Assigning is the deliberate reset point from the
+> table above, so voice, style and captions all snap to the new character's defaults. Editing a
+> character that's already on screen redraws it without touching the live values, since you're
+> adjusting the thing already there rather than replacing it.
 
-**E. Art upload.** Last, because it's the only stage handling files from a form — needs extension and
-size validation, and a decision on overwrite versus versioned filenames.
+**E. Art upload — done.** File pickers on `/setup`, writing into `static/characters/`.
+
+> **Overwrite, not versioned filenames** — the question left open below. The doc's worry was that
+> overwriting makes the cache-buster load-bearing; it already is, since `art_url()` stamps every art
+> URL with the file's mtime and the same mechanism carries the stylesheets. Versioning would
+> accumulate `wizard-open-2.png` forever for no benefit.
+>
+> **Filenames are derived from the character id**, never taken from the upload. A user-supplied
+> filename is a path traversal waiting to happen, so ids are constrained to letters, numbers,
+> hyphens and underscores — enforced both at upload and when a character is created, since creating
+> an id that can never hold art would be a strange kind of valid.
+>
+> **The pair is validated together before either frame is written.** Mismatched dimensions make the
+> character jump every time it speaks, and on stream that reads as a rendering bug rather than as
+> mismatched art. Writing one frame and refusing the other would produce exactly that state.
 
 **F. Casts.** Apply and save a named group of slot assignments. Built entirely on D's assign path, so
 it's small once D exists and impossible before it. Independent of art upload, so it can land before
@@ -545,9 +578,6 @@ through the assigned character, one path, no precedence rules.
 
 Nothing blocking. Worth thinking about during stage E:
 
-- **Overwrite or version uploaded art?** Uploading `goblin-open.png` twice — replace in place (simple,
-  but the cache-buster becomes load-bearing) or write `goblin-open-2.png` and update the reference
-  (no cache issues, accumulates files).
 - **What signals "assigned but idle"** when both names and the message are hidden? Static art alone
   reads as broken. A border tint, or dimming the art until a chatter is assigned, are the obvious
   candidates — but it's a look decision, not a technical one.

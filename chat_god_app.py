@@ -18,17 +18,20 @@ from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALO
                                   VOICES_SOURCE, styles_for)
 import usage
 from azure_text_to_speech import AzureTTSManager
-from characters import BOX_SIZES, CAPTION_FONTS, DISPLAY_FLAGS, size_parts
-from characters import load as load_characters
+import characters
+from characters import (BOX_SIZES, CAPTION_FONTS, DISPLAY_FLAGS, MAX_ART_BYTES,
+                       Library, size_parts)
 from config import legacy_in_use, missing_required, set_command, setting, startup_report
 from display_manager import DisplayManager
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
 
-# The character in each slot, resolved once at startup. Runtime assignment is stage
-# D of the character-library design; until then this is fixed for the session, and
-# a missing characters.json means the pre-library behaviour exactly.
-CHARACTERS, CHARACTERS_SOURCE = load_characters()
+# The character library, and the slot -> Character view derived from it. CHARACTERS
+# is re-derived rather than reloaded whenever an assignment changes, so the overlay
+# and the panel can follow along without a restart.
+library = Library().load()
+CHARACTERS = library.resolved()
+CHARACTERS_SOURCE = library.source
 display_manager = DisplayManager(CHARACTERS)
 
 # Every setting resolves through config.py: CHATGOD_-prefixed variable, then the
@@ -36,6 +39,12 @@ display_manager = DisplayManager(CHARACTERS)
 TWITCH_CHANNEL_NAME = setting('twitch_channel')
 
 app = Flask(__name__)
+
+# Two frames plus form overhead. Flask rejects anything larger before it reaches the
+# handler, so an accidental 4K render can't be read into memory just to be refused --
+# the per-file check in save_art() is the one that produces a readable message.
+app.config["MAX_CONTENT_LENGTH"] = 2 * MAX_ART_BYTES + (1024 * 1024)
+
 socketio = SocketIO(app, async_mode="threading")
 print(socketio.async_mode)
 
@@ -258,6 +267,68 @@ def _cache_busting():
     return {"static_v": static_v}
 
 
+def art_url(path):
+    """
+    A static URL for character art, stamped with the file's mtime.
+
+    Cache busting is mandatory here, not a nicety. Browser sources cache images
+    hard, so swapping a character by pointing at a new file works, but overwriting
+    a PNG in place would change nothing visible -- and the same trap already cost a
+    debugging round with stylesheets.
+    """
+    if not path:
+        return None
+    url = url_for('static', filename=path)
+    try:
+        stamp = int(os.path.getmtime(os.path.join(app.static_folder, path)))
+    except OSError:
+        return url
+    return f"{url}?v={stamp}"
+
+
+def slot_payload(number):
+    """Everything the overlay needs to redraw one slot after a change."""
+    character = CHARACTERS.get(number)
+    live = display_manager.get(number) or {}
+    return {
+        'user_number': number,
+        'art_closed': art_url(character.art_closed) if character else None,
+        'art_open': art_url(character.art_open) if character else None,
+        'character_name': character.display_name if character else "",
+        'show_character_name': bool(live.get('show_character_name')
+                                    and character and character.has_name),
+        'show_chatter_name': live.get('show_chatter_name'),
+        'show_message': live.get('show_message'),
+        'size_parts': size_parts(character, live),
+    }
+
+
+def apply_assignment(number):
+    """
+    Re-derive one slot after the library changed, and tell everyone.
+
+    **Assignment is a deliberate reset point.** The new character brings its own
+    voice, style and caption settings, discarding whatever was set live for the
+    previous occupant -- which is the whole point: the Wizard should sound like the
+    Wizard whoever was in the slot before. Changing *who is talking* is a separate
+    axis and deliberately doesn't reset anything.
+    """
+    global CHARACTERS, CHARACTERS_SOURCE
+    CHARACTERS = library.resolved()
+    CHARACTERS_SOURCE = library.source
+
+    character = CHARACTERS.get(number)
+    if character is None:
+        return
+
+    display_manager.reset_to(number, character)
+    if twitchbot is not None:
+        twitchbot.tts_manager.reset_to(number, character)
+
+    socketio.emit('art_changed', slot_payload(number))
+    socketio.emit('state', player_state())
+
+
 def status_report():
     """
     The four things that can be silently wrong, as green/red rows.
@@ -407,6 +478,166 @@ def control():
                            state=player_state())
 
 
+@app.route("/setup")
+def setup():
+    """
+    The character library: create, edit, assign. Not for stream.
+
+    Deliberately separate from the control panel. The panel is what you touch while
+    live, and it's already dense; this is what you touch between streams, and it
+    contains the one control -- delete -- that you'd hate to hit by accident with an
+    audience watching.
+    """
+    return render_template('setup.html',
+                           players=PLAYER_CONFIG,
+                           characters=library.characters,
+                           slots=library.slots,
+                           resolved=CHARACTERS,
+                           voices=VOICE_OPTIONS,
+                           voice_groups=VOICE_GROUPS,
+                           styles=STYLE_OPTIONS,
+                           display_flags=DISPLAY_FLAGS,
+                           characters_source=CHARACTERS_SOURCE,
+                           live=(twitchbot.tts_manager.voices if twitchbot else {}))
+
+
+@app.route("/setup/assign", methods=["POST"])
+def setup_assign():
+    number = request.form.get("player", "")
+    char_id = request.form.get("character") or None
+    ok, message = library.assign(number, char_id)
+    if ok:
+        apply_assignment(number)
+    return _setup_done(ok, message)
+
+
+@app.route("/setup/character", methods=["POST"])
+def setup_character():
+    """
+    Create or update one character.
+
+    Flags arrive as checkboxes, which means an unticked box sends nothing at all --
+    so they're read as presence rather than value, and every flag has to be listed
+    explicitly or unticking one would silently do nothing.
+    """
+    char_id = request.form.get("id", "")
+    fields = {key: request.form.get(key, "")
+              for key in ("display_name", "art_closed", "art_open",
+                          "default_voice", "default_style")}
+    fields.update({flag: request.form.get(flag) is not None for flag in DISPLAY_FLAGS})
+
+    ok, message = library.upsert(char_id, fields)
+    if ok:
+        # Any slot showing this character needs redrawing -- its art or captions may
+        # have just changed underneath it.
+        for number, assigned in library.slots.items():
+            if assigned == char_id:
+                apply_assignment(number)
+    return _setup_done(ok, message)
+
+
+@app.route("/setup/upload", methods=["POST"])
+def setup_upload():
+    """
+    Upload one or both art frames for a character.
+
+    Filenames are derived from the character id, never taken from the upload. A
+    user-supplied filename is a path traversal waiting to happen, and derived names
+    mean the file on disk always says which character owns it.
+
+    Existing art is overwritten rather than versioned. That only works because
+    `art_url()` stamps every art URL with the file's mtime -- without cache busting,
+    overwriting a PNG in place would change nothing visible in OBS. The alternative
+    accumulates wizard-open-2.png forever, so overwrite wins now that the
+    cache-buster is carrying stylesheets anyway.
+
+    Both frames are checked against each other before either is written, so a
+    mismatched pair is refused as a pair rather than leaving one new frame beside one
+    old one -- which would be exactly the jumping-character bug the check exists to
+    prevent.
+    """
+    char_id = (request.form.get("id") or "").strip()
+    if char_id not in library.characters:
+        return _setup_done(False, f"There's no character called {char_id!r}.")
+
+    uploads = {}
+    for which in ("closed", "open"):
+        item = request.files.get(f"art_{which}")
+        if item and item.filename:
+            uploads[which] = item.read()
+
+    if not uploads:
+        return _setup_done(False, "Pick at least one image first.")
+
+    # Establish the size to match against: the other upload if there is one,
+    # otherwise whatever is already on disk for this character.
+    sizes = {w: characters.png_size(d[:24]) for w, d in uploads.items()}
+    if len(uploads) == 2:
+        reference = sizes["closed"] or sizes["open"]
+    else:
+        which = next(iter(uploads))
+        other = "open" if which == "closed" else "closed"
+        entry = library.characters.get(char_id) or {}
+        reference = characters.art_size(entry.get(f"art_{other}"))
+
+    fields = {}
+    for which, data in uploads.items():
+        ok, message, relative = characters.save_art(char_id, which, data, reference)
+        if not ok:
+            return _setup_done(False, f"{which} image: {message}")
+        fields[f"art_{which}"] = relative
+
+    ok, message = library.upsert(char_id, fields)
+    if not ok:
+        return _setup_done(False, message)
+
+    for number, assigned in library.slots.items():
+        if assigned == char_id:
+            apply_assignment(number)
+
+    size = reference or next(iter(sizes.values()))
+    note = f" ({size[0]}x{size[1]})" if size else ""
+    return _setup_done(True, f"Art updated for {char_id}{note}. "
+                             "Check the browser source size on the control panel.")
+
+
+@app.route("/setup/delete", methods=["POST"])
+def setup_delete():
+    ok, message = library.delete(request.form.get("id", ""))
+    return _setup_done(ok, message)
+
+
+@app.route("/setup/save-default", methods=["POST"])
+def setup_save_default():
+    """
+    Write a slot's live voice and captions back onto its character.
+
+    Without this, the only way to keep a good mid-stream discovery is to remember it
+    and hand-edit JSON later -- so in practice it evaporates. Nothing is reset here:
+    the live values are already what you want, they just become the character's
+    defaults too.
+    """
+    number = request.form.get("player", "")
+    character = CHARACTERS.get(number)
+    if character is None or not character.id:
+        return _setup_done(False, "That slot has no character to save to.")
+
+    voice = twitchbot.tts_manager.voices.get(number) if twitchbot else None
+    if voice is None:
+        return _setup_done(False, "The bot hasn't started yet.")
+
+    fields = {"default_voice": voice["name"], "default_style": voice["style"]}
+    fields.update(display_manager.get(number) or {})
+    ok, message = library.upsert(character.id, fields)
+    return _setup_done(ok, f"{character.display_name or character.id}: "
+                           f"now defaults to {voice['name']}." if ok else message)
+
+
+def _setup_done(ok, message):
+    """Back to /setup with a one-line result, since these are plain form posts."""
+    return redirect(url_for("setup", ok="1" if ok else "0", msg=message))
+
+
 @app.route("/overlay")
 def overlay():
     """
@@ -433,8 +664,8 @@ def overlay():
     for number in numbers:
         character = CHARACTERS.get(number)
         images[number] = {
-            "closed": url_for('static', filename=character.art_closed) if character and character.art_closed else None,
-            "open": url_for('static', filename=character.art_open) if character and character.art_open else None,
+            "closed": art_url(character.art_closed) if character else None,
+            "open": art_url(character.art_open) if character else None,
         }
         names[number] = character.display_name if character else ""
         # The flag alone can't decide: a character with no name would render an

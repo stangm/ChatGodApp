@@ -103,6 +103,28 @@
                 refit();
             });
 
+            // A character was assigned or edited. Swap the art and captions in
+            // place: no browser-source refresh, no OBS interaction, nothing for the
+            // streamer to do. The URLs arrive already cache-busted, which is what
+            // makes overwriting a PNG in place actually show.
+            socket.on('art_changed', function(msg) {
+                if (PLAYERS.indexOf(msg.user_number) === -1) return;
+                var slot = $('#player-slot-' + msg.user_number);
+
+                var closed = slot.find('img.mouth-closed');
+                var open   = slot.find('img.mouth-open');
+                // An empty slot has no art at all, so hide rather than leaving the
+                // previous character on screen.
+                closed.attr('src', msg.art_closed || '').toggle(!!msg.art_closed);
+                open.attr('src', msg.art_open || '').toggle(!!msg.art_open);
+
+                $('#character-name-' + msg.user_number).text(msg.character_name || '');
+                slot.toggleClass('hide-character-name', !msg.show_character_name);
+                slot.toggleClass('hide-chatter-name',   !msg.show_chatter_name);
+                slot.toggleClass('hide-message',        !msg.show_message);
+                refit();
+            });
+
             // Captions toggled from the control panel. Classes only -- the boxes
             // collapse to nothing, and since the art is anchored to the top of the
             // slot it doesn't move when they do.

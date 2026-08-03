@@ -280,9 +280,28 @@ shows "this voice has no speaking styles" rather than offering options that won'
 Add `player4-closed.png` / `player4-open.png`, restart, and add a browser source pointing at
 `?player=4`. Nothing else needs to change.
 
-**Naming your characters** — copy `characters.example.json` to `characters.json`. A character has a
-display name that shows on stream, its own art, a default voice and style, and three switches for
-what appears beneath it:
+**Naming your characters** — open **<http://127.0.0.1:5000/setup>**, or the *characters* link in the
+control panel header. Create a character, upload its two PNGs, give it a voice, and assign it to a
+player slot. The art swaps on stream immediately — no restart, no browser-source refresh.
+
+Uploads are checked before anything is written: both frames must be PNG, under 8MB, and **the same
+dimensions as each other**. Mismatched frames make the character jump every time it speaks, which on
+stream looks like a bug rather than like mismatched art. Files are named after the character id and
+overwrite in place, so re-uploading is safe.
+
+Changing art can change the browser source height, since it's derived from the art's aspect ratio —
+check the size the control panel reports afterwards.
+
+*Save this voice as the default* on a slot writes whatever you've currently got selected back onto
+the character, which is how a good mid-stream discovery survives instead of evaporating.
+
+Deleting a character is refused while it's assigned to a slot, and never touches the PNGs.
+
+<details>
+<summary>Editing <code>characters.json</code> by hand instead</summary>
+
+Copy `characters.example.json` to `characters.json`. A character has a display name that shows on
+stream, its own art, a default voice and style, and three switches for what appears beneath it:
 
 ```json
 "wizard": {
@@ -298,7 +317,9 @@ what appears beneath it:
 
 Assign it with `"slots": { "1": { "character": "wizard" } }`. Slots you don't mention keep using
 `players.py` and the `player<N>-*.png` convention, so you can convert one at a time. The file is
-gitignored and the app never writes to it.
+gitignored, and `/setup` writes to this same file — hand-edits and the screen are interchangeable.
+
+</details>
 
 Both names are drawn **over** the lower part of the art — "Henry Potter" larger, `silverstagvt`
 smaller underneath. Because they sit on the art rather than below it, turning either on or off never
@@ -355,9 +376,9 @@ character once you have a `characters.json`.
 | Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page |
 | Text appears, no audio | Check the browser source isn't muted in OBS's Audio Mixer |
 | Mouth never closes / never opens | Adjust the threshold in `templates/overlay.html` |
-| Character name doesn't appear | The character has no `display_name`, or the app was already running when you created `characters.json` — it's read once at startup |
+| Character name doesn't appear | The character has no name on stream, or *character name* is unticked for it in `/setup` |
 | Caption toggles change nothing on stream | Refresh the browser source. If it persists, check the server console prints `show_message is now False` when you click |
-| Edited `characters.json`, nothing changed | Restart the app. Nothing re-reads it while running |
+| Edited `characters.json` by hand, nothing changed | Restart the app. Hand edits aren't re-read while running; changes made in `/setup` apply immediately |
 | `AttributeError` from twitchio at startup | twitchio 3.x got installed — `pip install -r requirements.txt` pins it below 3 |
 | 404 "Unknown player" | The `?player=` number has no entry in `players.py` |
 
@@ -372,7 +393,7 @@ character once you have a `characters.json`.
 | `chat_god_app.py` | Flask app, Twitch bot, socket handlers, routes |
 | `config.py` | Resolves every setting: `CHATGOD_` variable, then the legacy name, then a default |
 | `players.py` | Player config — which slots exist, keyphrases, fallback voices |
-| `characters.py` | Reads `characters.json`, resolves each slot to a character, and works out the OBS browser source size |
+| `characters.py` | Reads and writes `characters.json`, resolves each slot to a character, and works out the OBS browser source size |
 | `characters.example.json` | Template for your own `characters.json` — names, art, default voices, caption switches. Copy it to start. Your copy is gitignored |
 | `display_manager.py` | Live caption visibility per slot, what the control panel toggles |
 | `usage.py` | Counts characters sent to Azure, in a gitignored `usage.json` keyed by month, so the panel can warn before the free tier's 500,000 ceiling |
@@ -382,6 +403,7 @@ character once you have a `characters.json`.
 | `voices.default.json` | The voice catalog shipped with the repo — a real fetch, all English locales, free-tier voices. Used when you haven't run `fetch_voices.py`. Your own `voices.json` overrides it and is gitignored |
 | `templates/overlay.html` | On-stream graphic, lip sync |
 | `templates/control.html` | Operator dashboard |
+| `templates/setup.html` | Character library — create, edit, upload art, assign, delete |
 | `audio_player.py`, `obs_websockets.py` | Legacy server-side playback and OBS filter toggling, kept for the startup chime and test scripts. Off by default (`OBS_WEBSOCKETS_ENABLED` in `players.py`) |
 | `tts_test.py` | Synthesis and local playback without Twitch or a browser — checks voices and Azure credentials on their own |
 | `voice_test.py` | Walks the voice and style lists, so you can hear combinations before assigning them |
