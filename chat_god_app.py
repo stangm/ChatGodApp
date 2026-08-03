@@ -16,6 +16,8 @@ import uuid
 
 from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALOG,
                                   VOICES_SOURCE, styles_for)
+import usage
+from azure_text_to_speech import AzureTTSManager
 from characters import BOX_SIZES, CAPTION_FONTS, DISPLAY_FLAGS, size_parts
 from characters import load as load_characters
 from config import legacy_in_use, missing_required, set_command, setting, startup_report
@@ -40,6 +42,16 @@ print(socketio.async_mode)
 # Set once the bot thread has constructed the Bot. Socket events can arrive before
 # that happens, so every handler checks it.
 twitchbot = None
+
+# Set from event_ready once Twitch accepts the token. Constructing the Bot proves
+# nothing -- a bad token fails at connect time, on another thread, well after
+# startup has printed everything else and looked fine.
+twitch_nick = None
+
+# socket id -> which overlay players that page is showing. The control panel needs
+# to know that OBS is actually connected, because a browser source pointed at the
+# wrong URL looks identical to one that's working until nobody speaks.
+overlay_clients = {}
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +258,134 @@ def _cache_busting():
     return {"static_v": static_v}
 
 
+def status_report():
+    """
+    The four things that can be silently wrong, as green/red rows.
+
+    Each of these fails in a way that only shows up mid-stream, and each looks like
+    something else when it does: a logged-out bot looks like quiet chat, a rejected
+    Azure key sounds like a voice change, an exhausted quota sounds like TTS
+    breaking, and a mistyped browser source URL looks like a blank rectangle. The
+    panel exists so all four are answerable before going live rather than during.
+
+    'unknown' is used rather than 'bad' wherever the app genuinely can't tell yet --
+    claiming something is broken when it merely hasn't happened yet trains people to
+    ignore the panel.
+    """
+    rows = []
+
+    # -- Twitch ---------------------------------------------------------------
+    if twitch_nick:
+        rows.append(("Twitch", "ok",
+                     f"connected as {twitch_nick}, reading #{TWITCH_CHANNEL_NAME}"))
+    elif twitchbot is None:
+        rows.append(("Twitch", "unknown", "still starting up"))
+    else:
+        rows.append(("Twitch", "bad",
+                     f"not logged in -- check CHATGOD_TWITCH_TOKEN, and that "
+                     f"#{TWITCH_CHANNEL_NAME} is the right channel"))
+
+    # -- Azure ----------------------------------------------------------------
+    # The startup chime is a real synthesis, so this is answered by the time anyone
+    # opens the panel -- no test call needed.
+    if AzureTTSManager.last_result == "ok":
+        rows.append(("Azure", "ok", "key and region working"))
+    elif AzureTTSManager.last_result == "fallback":
+        rows.append(("Azure", "bad",
+                     f"{AzureTTSManager.last_error} -- using the robotic backup voice"))
+    else:
+        rows.append(("Azure", "unknown", "nothing synthesized yet"))
+
+    # -- Quota ----------------------------------------------------------------
+    quota = usage.summary()
+    rows.append(("Quota", {"ok": "ok", "warn": "warn", "over": "bad"}.get(
+        quota["state"], "unknown"), quota["detail"]))
+
+    # -- Voices ---------------------------------------------------------------
+    styled = sum(1 for v in VOICE_CATALOG.values() if v.get("styles"))
+    if VOICES_SOURCE == "builtin":
+        rows.append(("Voices", "warn",
+                     f"{len(AZURE_VOICES)} built-in voices, no styles -- "
+                     "run fetch_voices.py"))
+    else:
+        source = "from Azure" if VOICES_SOURCE == "file" else "shipped with the app"
+        rows.append(("Voices", "ok",
+                     f"{len(AZURE_VOICES)} loaded {source}, {styled} with styles"))
+
+    # -- Overlay --------------------------------------------------------------
+    count = len(overlay_clients)
+    if count:
+        shown = sorted({n for players in overlay_clients.values() for n in players})
+        which = f" (player {', '.join(shown)})" if shown else ""
+        rows.append(("Overlay", "ok",
+                     f"{count} browser source{'s' if count != 1 else ''} connected{which}"))
+    else:
+        rows.append(("Overlay", "warn",
+                     "no browser sources connected -- OBS isn't open, or a source "
+                     "URL is wrong"))
+
+    return [{"name": n, "state": s, "detail": d} for n, s, d in rows]
+
+
+def push_status():
+    """Broadcast the status to every panel. Safe to call from the bot thread."""
+    socketio.emit('status', status_report())
+
+
+def diagnostics():
+    """
+    Everything worth pasting into a message when something is wrong.
+
+    The point is that "click that button and paste it to me" replaces a diagnostic
+    conversation. So it carries the things a person can't reliably report about their
+    own machine -- versions, which config source won, whether files were found -- and
+    the current status rows, which is the answer to the first question anyone asks.
+
+    **No secrets, ever.** Settings appear as set or not set, never by value. This
+    text is designed to be pasted into a chat window, and it will be, including by
+    people who won't read it first. `config.startup_report()` already redacts, so the
+    redaction lives in one place rather than being reimplemented here.
+    """
+    import platform
+
+    lines = [
+        "Chat God diagnostics",
+        f"  generated   {datetime.now(pytz.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"  python      {platform.python_version()} on {platform.system()} {platform.release()}",
+        "",
+        "Status",
+    ]
+    for row in status_report():
+        lines.append(f"  {row['name']:<10} {row['state']:<8} {row['detail']}")
+
+    lines += ["", "Configuration"]
+    lines += [f"  {line.strip()}" for line in startup_report()]
+    for prefixed, legacy in legacy_in_use():
+        lines.append(f"  (using legacy name {legacy} for {prefixed})")
+
+    lines += [
+        "",
+        "Files",
+        f"  voices        {VOICES_SOURCE} ({len(AZURE_VOICES)} voices)",
+        f"  characters    {CHARACTERS_SOURCE}",
+        f"  players       {', '.join(PLAYER_CONFIG)}",
+    ]
+
+    for number, character in CHARACTERS.items():
+        label = character.display_name or character.id or "(empty)"
+        voice = twitchbot.tts_manager.voices.get(number) if twitchbot else None
+        live = f"{voice['name']} / {voice['style']}" if voice else "not started"
+        lines.append(f"  player {number}      {label} -- {live}")
+
+    return "\n".join(lines)
+
+
+@app.route("/diagnostics")
+def diagnostics_text():
+    """Plain text, so it can be read in a browser as well as copied."""
+    return diagnostics(), 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
 @app.route("/")
 def home():
     return redirect(url_for("control"))
@@ -263,6 +403,7 @@ def control():
                            voices_source=VOICES_SOURCE,
                            default_style=DEFAULT_VOICE_STYLE,
                            characters_source=CHARACTERS_SOURCE,
+                           status=status_report(),
                            state=player_state())
 
 
@@ -332,6 +473,32 @@ def connect():
     """
     print("Socket client connected.")
     emit('state', player_state())
+    emit('status', status_report())
+
+
+@socketio.on("overlay_here")
+def overlay_here(value):
+    """
+    An overlay page announcing itself, so the panel can say OBS is connected.
+
+    Needed because a browser source pointed at the wrong URL is invisible: it shows
+    a blank rectangle that's indistinguishable from a correct source waiting for
+    someone to speak. Counting the pages that actually loaded the overlay turns that
+    into a number you can check before going live.
+
+    Keyed by socket id so a disconnect can remove it without guessing.
+    """
+    numbers = value.get('players') if isinstance(value, dict) else None
+    overlay_clients[request.sid] = list(numbers) if numbers else []
+    print(f"Overlay connected for player(s) {', '.join(overlay_clients[request.sid]) or '?'}")
+    push_status()
+
+
+@socketio.on("disconnect")
+def disconnect():
+    if overlay_clients.pop(request.sid, None) is not None:
+        print("Overlay disconnected.")
+        push_status()
 
 
 def _player_from(value):
@@ -469,6 +636,12 @@ class Bot(commands.Bot):
     async def event_ready(self):
         print(f'Logged in as | {self.nick}')
         print(f'User id is | {self.user_id}')
+        # Recorded rather than only printed: "did the bot actually log in" is the
+        # single most useful thing to know before going live, and a line that
+        # scrolled past twenty minutes ago answers it for nobody.
+        global twitch_nick
+        twitch_nick = self.nick
+        push_status()
 
     async def event_message(self, message):
         await self.process_message(message)

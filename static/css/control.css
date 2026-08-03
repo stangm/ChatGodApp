@@ -45,6 +45,72 @@ h1 { font-size: 22px; margin: 0; font-weight: 500; }
     line-height: 1.6;
 }
 
+/* ---- health rows ------------------------------------------------------------
+
+   Sits above everything because it's meant to be read before going live, and it
+   answers "is this working" without needing anything typed in chat.
+
+   Colour carries the meaning, but never alone: each row also says what's wrong in
+   words. A colour-blind operator, or a screenshot pasted into a chat window, has to
+   remain readable.
+*/
+
+.health {
+    margin: 16px 0 22px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+}
+
+.health-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.health-rows { list-style: none; margin: 0; padding: 0; }
+
+.health-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 5px 0 5px 12px;
+    font-size: 13px;
+    border-left: 3px solid var(--muted);
+}
+
+.health-row.ok      { border-left-color: var(--ok); }
+.health-row.warn    { border-left-color: var(--warn); }
+.health-row.bad     { border-left-color: var(--bad); }
+.health-row.unknown { border-left-color: var(--muted); }
+
+.health-name {
+    min-width: 74px;
+    font-weight: 500;
+}
+
+.health-row.ok      .health-name { color: var(--ok); }
+.health-row.warn    .health-name { color: var(--warn); }
+.health-row.bad     .health-name { color: var(--bad); }
+.health-row.unknown .health-name { color: var(--muted); }
+
+.health-detail { color: var(--text); }
+.health-row.unknown .health-detail { color: var(--muted); }
+
+#copy-diagnostics {
+    padding: 5px 12px;
+    font-size: 11px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--panel-edge);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#copy-diagnostics:hover { border-color: var(--accent); color: var(--accent); }
+
 /* Shown when voices.json is missing and the built-in list is standing in. */
 .hint.warn {
     border-left: 2px solid var(--warn);

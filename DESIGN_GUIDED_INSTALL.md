@@ -294,8 +294,25 @@ activation policy, no wrong-venv confusion.
 > The Werkzeug TTY trap below was real and was hit as predicted; `allow_unsafe_werkzeug=True` is now
 > in `chat_god_app.py`.
 
-**C. Status panel.** The green/red block above, at the top of the control panel. Turns "it's not
-working" into a line she can read out.
+**C. Status panel — done.** Five rows at the top of the control panel: Twitch, Azure, Quota, Voices,
+Overlay. Rendered server-side and pushed over the socket, since the two rows that change after load —
+the bot finishing login, and OBS connecting — both happen unprompted a few seconds later. The
+**Copy diagnostics** button and a plain-text `/diagnostics` route landed with it.
+
+> **The Azure check was free.** The app already synthesizes a startup chime, so by the time anyone
+> opens the panel a real Azure round trip has happened. No test call, no artificial phrase — just
+> recording the outcome that was already being thrown away. Failure reasons are mapped to plain
+> language, because a 401 and a 403 are indistinguishable on stream: both just sound like the
+> robotic fallback voice.
+>
+> **Quota is counted locally and persisted**, since the SDK doesn't expose it. `usage.json` is keyed
+> by month so rollover is automatic. It counts on success only — a failed call isn't billed — and
+> every failure path is silent and non-fatal, because bookkeeping attached to the speech path must
+> never stop a stream. A counter that silently stops counting reports `unknown` rather than a
+> reassuring number.
+>
+> **`unknown` is used wherever the app genuinely can't tell yet**, rather than `bad`. Claiming
+> something is broken when it merely hasn't happened is how a panel trains people to ignore it.
 
 **D. Fix Azure error reporting.** Bad key, bad region and network failure are currently one message
 with the real error swallowed. Needed by C, and useful in the runbook world regardless.

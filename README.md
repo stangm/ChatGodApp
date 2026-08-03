@@ -194,6 +194,12 @@ Equivalent, and better when you're changing code — you see the output directly
 Open **<http://127.0.0.1:5000/control>** in a normal browser — this is your operator dashboard.
 Don't add it to OBS; it's not meant for stream.
 
+**The block at the top is a pre-flight check.** Twitch login, Azure credentials, monthly character
+quota, the voice catalogue, and how many OBS browser sources are connected. All five fail silently
+otherwise, and all five first show themselves mid-stream disguised as something else. **Copy
+diagnostics** puts the whole picture on the clipboard with secrets redacted, so "paste me that"
+replaces a diagnostic conversation.
+
 From the control panel you can assign a chatter to each player slot, pick voices and styles, and
 toggle TTS per player, all live.
 
@@ -344,6 +350,7 @@ character once you have a `characters.json`.
 | `characters.py` | Reads `characters.json`, resolves each slot to a character, and works out the OBS browser source size |
 | `characters.example.json` | Template for your own `characters.json` — names, art, default voices, caption switches. Copy it to start. Your copy is gitignored |
 | `display_manager.py` | Live caption visibility per slot, what the control panel toggles |
+| `usage.py` | Counts characters sent to Azure, in a gitignored `usage.json` keyed by month, so the panel can warn before the free tier's 500,000 ceiling |
 | `voices_manager.py` | Voice state per player, synthesis calls |
 | `azure_text_to_speech.py` | Azure TTS with a gTTS fallback, and the voice/style catalog |
 | `fetch_voices.py` | Asks Azure for the voice list and writes `voices.json`. Run once at setup, again whenever you want to refresh |

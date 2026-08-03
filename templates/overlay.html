@@ -51,6 +51,13 @@
         $(document).ready(function() {
             var socket = io();
 
+            // Tell the server this page is an overlay, not a control panel, so the
+            // panel can report that OBS is actually connected. Sent on every
+            // connect, not just the first, so a browser-source reload re-registers.
+            socket.on('connect', function() {
+                socket.emit('overlay_here', { players: PLAYERS });
+            });
+
             function refit() {
                 PLAYERS.forEach(function(n) {
                     // A hidden box has no height, and textfill on a zero-height

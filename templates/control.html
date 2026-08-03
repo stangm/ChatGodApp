@@ -173,6 +173,40 @@
                 $('#last-message-' + msg.user_number).text(msg.message);
             });
 
+            // ---- health rows and diagnostics -------------------------------
+
+            // Rendered server-side first so the panel is useful on first paint, then
+            // kept current by this. Pushed rather than polled, because the two
+            // things that change after load -- the bot finishing login, and OBS
+            // connecting -- both happen seconds later and unprompted.
+            socket.on('status', function(rows) {
+                var list = $('#health-rows').empty();
+                rows.forEach(function(row) {
+                    $('<li>').addClass('health-row ' + row.state)
+                        .append($('<span>').addClass('health-name').text(row.name))
+                        .append($('<span>').addClass('health-detail').text(row.detail))
+                        .appendTo(list);
+                });
+            });
+
+            $('#copy-diagnostics').on('click', function() {
+                var button = $(this);
+                $.get('/diagnostics').done(function(text) {
+                    // Fall back to a prompt rather than failing quietly -- this
+                    // button exists for the moment something is already wrong.
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(text).then(function() {
+                            button.text('Copied - paste it to Mark');
+                            setTimeout(function() { button.text('Copy diagnostics'); }, 4000);
+                        });
+                    } else {
+                        window.prompt('Copy this and send it to Mark:', text);
+                    }
+                }).fail(function() {
+                    button.text('Could not read diagnostics');
+                });
+            });
+
             socket.on('connect',    function() { $('#conn').text('connected').attr('class', 'ok'); });
             socket.on('disconnect', function() { $('#conn').text('disconnected').attr('class', 'bad'); });
         });
@@ -184,6 +218,23 @@
         <h1>Chat God &mdash; Control Panel</h1>
         <div class="status">server: <span id="conn" class="bad">connecting&hellip;</span></div>
     </header>
+
+    <!-- Check this before going live. Each row is something that fails silently and
+         only announces itself mid-stream. -->
+    <section class="health">
+        <div class="health-head">
+            <span class="label">Before you go live</span>
+            <button type="button" id="copy-diagnostics">Copy diagnostics</button>
+        </div>
+        <ul class="health-rows" id="health-rows">
+            {% for row in status %}
+            <li class="health-row {{ row.state }}">
+                <span class="health-name">{{ row.name }}</span>
+                <span class="health-detail">{{ row.detail }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
 
     <p class="hint">
         This page is for you, not for stream. Each player below shows its own browser source URL and

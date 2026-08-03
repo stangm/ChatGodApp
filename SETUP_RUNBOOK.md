@@ -278,6 +278,28 @@ Expect a spoken "Chat God App is now running!" and a `Logged in as | yourbotname
 **<http://127.0.0.1:5000/control>** in a normal browser. That's your operator dashboard — don't add
 it to OBS.
 
+**Read the block at the top of the panel before every stream.** Five rows, green when they're fine:
+
+```
+Twitch    connected as silverstagbot, reading #silverstagvt
+Azure     key and region working
+Quota     18,400 of 500,000 characters this month
+Voices    119 loaded from Azure, 21 with styles
+Overlay   2 browser sources connected (player 1, 2)
+```
+
+Every one of those fails silently and only announces itself mid-stream — and each looks like
+something else when it does. A logged-out bot looks like quiet chat. A rejected Azure key sounds like
+the voice changed. An exhausted monthly quota sounds like TTS breaking for no reason. A mistyped
+browser source URL looks like an empty rectangle.
+
+*Overlay* stays amber until OBS is open with the sources loaded, so it's the row that tells you your
+URLs are actually right.
+
+If something is wrong and the row doesn't explain it, hit **Copy diagnostics** and paste that
+somewhere useful. It contains versions, which settings are set (never their values), and the current
+status — no keys or tokens, so it's safe to paste into a chat.
+
 > **Make a desktop shortcut to `start.bat`** for whoever streams with this. Right-click it → *Send
 > to* → *Desktop (create shortcut)*. That's the difference between "run the app" being a task and
 > being a double-click.

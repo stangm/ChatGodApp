@@ -9,6 +9,7 @@ from gtts import gTTS
 from pydub import AudioSegment
 import pygame
 
+import usage
 from config import setting
 
 # Generated clips live outside the repo. The original wrote them to the working
@@ -140,9 +141,47 @@ AZURE_PREFIXES = {
     "(random)" : "random"
 }
 
+def _failure_reason(result):
+    """
+    A short, readable reason a synthesis failed.
+
+    Azure's cancellation details carry the useful part -- a 401 for a bad key, a 403
+    for the wrong region or an exhausted quota -- but they arrive as a wall of text
+    with an error code buried in it. The status panel wants one line, and the common
+    causes are worth naming outright because they're indistinguishable on stream:
+    every one of them just sounds like the robotic fallback voice.
+    """
+    try:
+        details = speechsdk.CancellationDetails(result)
+        raw = (details.error_details or "").strip()
+    except Exception:
+        raw = ""
+
+    lowered = raw.lower()
+    if "401" in lowered or "unauthorized" in lowered or "authentication" in lowered:
+        return "key rejected -- check CHATGOD_AZURE_KEY"
+    if "403" in lowered or "forbidden" in lowered:
+        return "refused -- wrong region, or the monthly quota is used up"
+    if "quota" in lowered or "exceeded" in lowered:
+        return "quota exceeded for this month"
+    if "connection" in lowered or "timeout" in lowered or "unreachable" in lowered:
+        return "couldn't reach Azure -- network or firewall"
+    return raw[:120] if raw else "no reason given"
+
+
 class AzureTTSManager:
     azure_speechconfig = None
     azure_synthesizer = None
+
+    # Outcome of the most recent synthesis, for the control panel's status row:
+    # None (nothing tried yet), 'ok', or a short reason it fell back to gTTS.
+    #
+    # This is a health signal rather than a log. The app already synthesizes a
+    # startup chime, so by the time the panel is first opened this has been set by a
+    # real Azure round trip -- an active credential check for free, with no extra
+    # call and no artificial test phrase.
+    last_result = None
+    last_error = None
 
     def __init__(self):
         pygame.init()
@@ -195,9 +234,16 @@ class AzureTTSManager:
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
             stream = speechsdk.AudioDataStream(result)
             stream.save_to_wav_file(output)
+            AzureTTSManager.last_result = "ok"
+            AzureTTSManager.last_error = None
+            # Counted only on success, since a failed call isn't billed. Counting on
+            # entry would inflate the total every time the key was wrong.
+            usage.record(text)
         else:
             # If Azure fails, use gTTS instead. gTTS saves as an mp3 by default, so convert it to a wav file after
-            print("\n   Azure failed, using gTTS instead   \n")
+            AzureTTSManager.last_result = "fallback"
+            AzureTTSManager.last_error = _failure_reason(result)
+            print(f"\n   Azure failed ({AzureTTSManager.last_error}), using gTTS instead   \n")
             output_mp3 = output.replace(".wav", ".mp3")
             msgAudio = gTTS(text=text, lang='en', slow=False)
             msgAudio.save(output_mp3)

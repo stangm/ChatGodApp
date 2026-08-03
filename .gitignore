@@ -47,3 +47,7 @@ voices.json
 # Your character library: names, art paths and display settings, referencing art
 # that only exists on your disk. characters.example.json is the tracked template.
 characters.json
+
+# Monthly Azure character count, written by usage.py. Per-machine bookkeeping, and
+# regenerable -- deleting it just restarts the count from zero.
+usage.json

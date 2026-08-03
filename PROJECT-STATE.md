@@ -104,9 +104,8 @@ has no caller yet.
    than it sounds because every caption size is already a CSS custom property. Font selection is the
    expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
    family locally when it's picked.
-5. ~~The launcher script~~ — **done**, `start.bat`. Next in that design is the **status panel**
-   (install stage C): Twitch/Azure/voices/overlay green or red at the top of the control panel, so
-   "it's not working" becomes a line she reads out to you.
+5. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
+   the **rolling log file**, then E onwards (the wizard) which only pays off at more than one user.
 6. **`templates/index.html` is still orphaned.** 307 lines of superseded markup that no route
    renders, now diverged further from `control.html`. Delete or repurpose it for `/setup`.
 
@@ -134,6 +133,7 @@ sound natively and no OBS plugin or Move filter is involved any more.
 | `config.py` | Every setting read. `setting('azure_key')` and friends |
 | `characters.py` | The library read path, plus the browser-source size arithmetic and `BOX_HEIGHTS` |
 | `display_manager.py` | Live caption visibility per slot |
+| `usage.py` | Persisted monthly Azure character count, for the quota warning |
 | `players.py` | Which slots exist, keyphrases, fallback voices. Hand-edited |
 | `voices_manager.py` | Per-slot live voice/style; the override layer the control panel edits |
 | `azure_text_to_speech.py` | Synthesis, style resolution, gTTS fallback |
@@ -224,7 +224,9 @@ for production" error — which reads as a crash rather than a refusal. Fixed wi
 detached, scheduled, or without a console hits this immediately.
 
 **Azure F0 is 500,000 characters/month.** Hitting the ceiling mid-stream looks exactly like "TTS
-randomly stopped."
+randomly stopped." The control panel now warns from 80%, counting locally in `usage.json` — the SDK
+doesn't expose real usage, so that number is this app's own tally and undercounts if the same Azure
+resource is used from anywhere else. Check the portal before believing it about a bill.
 
 ---
 
@@ -267,16 +269,25 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
 
 ## Picking it back up
 
-Nothing is half-finished. `main` is clean, everything is pushed, and stages A and A2 are verified on
-stream. Pick from *Not done* above.
+**The status panel is written but has never run** — five health rows at the top of the control panel,
+a `usage.json` character counter, and a Copy diagnostics button. Verify that first:
 
-**The launcher script is the recommendation** — install stage B, the highest-value item in that
-design, and it touches none of the character work. It's what the second streamer runs every single
-stream, and it's the thing that most reduces you being the support desk mid-broadcast.
+- All five rows appear, and *Overlay* goes green once OBS connects
+- *Azure* is green after the startup chime; break the key deliberately and it should say so
+- *Quota* shows a number that grows as messages are spoken, and survives a restart
+- Copy diagnostics puts text on the clipboard with **no key or token in it**
+
+Everything else is clean, merged and pushed.
+
+**The status panel is the recommendation** — install stage C, and the other half of the problem the
+launcher solves. Starting reliably is done; *knowing it's working before going live* isn't. Twitch,
+Azure, voices and overlay connections are each silently wrong today, and every one of them surfaces
+mid-stream as "it's not working". A green/red block at the top of the control panel turns most of
+those into a line she reads out to you.
 
 A few smaller checks were never run and are worth folding into whatever comes next rather than doing
-on their own: deleting `characters.json` and restarting to confirm the fallback path still works
-end to end, and the reported width input recalculating at values other than 500.
+on their own: deleting `characters.json` and restarting to confirm the fallback path still works end
+to end, and the reported width input recalculating at values other than 500.
 
 ---
 
@@ -285,5 +296,5 @@ end to end, and the reported width input recalculating at values other than 500.
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 2 Aug 2026 — character library stages A and A2 verified on stream and merged; repo
-moved out of OneDrive to `C:\dev\ChatGodApp`.
+Last updated: 2 Aug 2026 — status panel and diagnostics button added (**untested**); `start.bat`
+launcher working; character library stages A and A2 verified on stream; repo moved out of OneDrive.
