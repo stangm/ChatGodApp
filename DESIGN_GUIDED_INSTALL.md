@@ -274,9 +274,25 @@ removes environment variables from her life entirely. Foundation for everything 
 > gitignored, and what happens on a malformed one (log and fall through to defaults, matching how
 > `characters.json` is specced).
 
-**B. Launcher script.** Finds Python, builds the venv, installs deps, starts the app, opens the
-browser. No terminal, no activation policy, no wrong-venv confusion. Best return per hour of anything
-here, and it's what she touches every single stream.
+**B. Launcher script — done.** `start.bat` finds Python 3.9–3.12, reuses a venv or creates `.venv`,
+installs dependencies on first run, starts the app and opens the control panel. No terminal, no
+activation policy, no wrong-venv confusion.
+
+> Three decisions worth recording. **The window stays visible**, against the original sketch: a first
+> run spends two minutes installing dependencies, and a hidden window looks like nothing happened —
+> and there's always a last line to read out when something breaks. The friendly-output requirement
+> is met by every failure having a named cause and a next step, not by hiding the console.
+>
+> **It detects Python rather than installing it.** At N=1 you install Python once during handover;
+> an unattended install with elevation prompts is the part most likely to break where you can't see.
+>
+> **Dependency freshness is an import check, not a comparison against `requirements.txt`.** It
+> answers the question that matters — can the app import what it needs — and is far less fragile in
+> batch than timestamp bookkeeping. The trade-off: changing `requirements.txt` doesn't retrigger
+> installation, so that stays a developer step.
+>
+> The Werkzeug TTY trap below was real and was hit as predicted; `allow_unsafe_werkzeug=True` is now
+> in `chat_god_app.py`.
 
 **C. Status panel.** The green/red block above, at the top of the control panel. Turns "it's not
 working" into a line she can read out.

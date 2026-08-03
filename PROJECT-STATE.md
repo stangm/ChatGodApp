@@ -104,8 +104,9 @@ has no caller yet.
    than it sounds because every caption size is already a CSS custom property. Font selection is the
    expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
    family locally when it's picked.
-5. **The launcher script** — install stage B, and the highest-value item in that design: it's what
-   the second streamer touches every stream, and it's independent of everything above.
+5. ~~The launcher script~~ — **done**, `start.bat`. Next in that design is the **status panel**
+   (install stage C): Twitch/Azure/voices/overlay green or red at the top of the control panel, so
+   "it's not working" becomes a line she reads out to you.
 6. **`templates/index.html` is still orphaned.** 307 lines of superseded markup that no route
    renders, now diverged further from `control.html`. Delete or repurpose it for `/setup`.
 
@@ -218,8 +219,9 @@ stylesheet doesn't have, so captions stop hiding and new elements render unstyle
 points at the code rather than the cache. It cost a debugging round the first time it happened.
 
 **Flask-SocketIO refuses to start when `sys.stdin` isn't a TTY**, raising a Werkzeug "not designed
-for production" error. Running from PowerShell is fine, so this hasn't bitten yet — but it will
-break the launcher the moment it hides the console or uses `pythonw`. One keyword argument fixes it.
+for production" error — which reads as a crash rather than a refusal. Fixed with
+`allow_unsafe_werkzeug=True` in `socketio.run()`. Don't remove it: anything that starts the app
+detached, scheduled, or without a console hits this immediately.
 
 **Azure F0 is 500,000 characters/month.** Hitting the ceiling mid-stream looks exactly like "TTS
 randomly stopped."

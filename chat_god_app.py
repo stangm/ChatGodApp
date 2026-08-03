@@ -606,4 +606,14 @@ if __name__=='__main__':
     bot_thread = threading.Thread(target=startTwitchBot, args=(tts_manager, speech_worker), daemon=True)
     bot_thread.start()
 
-    socketio.run(app)
+    # allow_unsafe_werkzeug is required, not optional, for anything but a terminal.
+    #
+    # Flask-SocketIO refuses to start the Werkzeug server when sys.stdin isn't a TTY,
+    # raising "The Werkzeug web server is not designed to run in production". Running
+    # this by hand in PowerShell is fine, which is why it went unnoticed -- but a
+    # launcher, a scheduled task, or anything that starts the app detached trips it
+    # instantly, and the failure reads as a crash on startup rather than a refusal.
+    #
+    # The warning is about exposing Werkzeug to the internet. This binds to localhost
+    # and serves one operator and their own OBS, so it doesn't apply.
+    socketio.run(app, allow_unsafe_werkzeug=True)

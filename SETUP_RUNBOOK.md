@@ -263,6 +263,12 @@ and OBS doesn't need to be open for the app to run.
 
 ## Stage 6 — Run it
 
+**Double-click `start.bat`.** It handles the venv, the dependencies and the browser. Everything in
+stage 1 that you did by hand, it does for you on a machine that hasn't been set up yet — so once
+credentials are in place, this is the only step anyone needs day to day.
+
+Running by hand is equivalent and better when you're changing code:
+
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python chat_god_app.py
@@ -271,6 +277,10 @@ python chat_god_app.py
 Expect a spoken "Chat God App is now running!" and a `Logged in as | yourbotname` line. Then open
 **<http://127.0.0.1:5000/control>** in a normal browser. That's your operator dashboard — don't add
 it to OBS.
+
+> **Make a desktop shortcut to `start.bat`** for whoever streams with this. Right-click it → *Send
+> to* → *Desktop (create shortcut)*. That's the difference between "run the app" being a task and
+> being a double-click.
 
 **Smoke test, in this order.** Each step isolates one thing, so stop at the first failure:
 

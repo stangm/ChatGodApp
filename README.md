@@ -171,10 +171,25 @@ That's the whole OBS setup. No plugins, no audio capture source, no filters.
 
 ## Running it
 
+**Double-click `start.bat`.** It finds Python, creates the virtual environment the first time,
+installs what's needed, starts the app and opens the control panel. Run it again and it just starts.
+Leave the window open while you stream; closing it stops Chat God.
+
+If it can't do something it says which thing and what to do about it, and keeps the window open so
+you can read it. Double-clicking it while it's already running just reopens the control panel.
+
+<details>
+<summary>Running it by hand instead</summary>
+
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python chat_god_app.py
 ```
+
+Equivalent, and better when you're changing code — you see the output directly and can Ctrl-C it.
+`start.bat` will reuse a `.venv` or `venv` beside the app, or whatever `CHATGOD_VENV` points at.
+
+</details>
 
 Open **<http://127.0.0.1:5000/control>** in a normal browser — this is your operator dashboard.
 Don't add it to OBS; it's not meant for stream.
@@ -322,6 +337,7 @@ character once you have a `characters.json`.
 | | |
 |---|---|
 | `PROJECT-STATE.md` | Where the project currently stands — what works, what's in flight, what wastes your time. Start here if you're picking the project back up |
+| `start.bat` | Double-click launcher. Finds Python, builds the venv on first run, starts the app, opens the control panel |
 | `chat_god_app.py` | Flask app, Twitch bot, socket handlers, routes |
 | `config.py` | Resolves every setting: `CHATGOD_` variable, then the legacy name, then a default |
 | `players.py` | Player config — which slots exist, keyphrases, fallback voices |
