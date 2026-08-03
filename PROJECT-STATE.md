@@ -52,27 +52,23 @@ caption layout and the stylesheet cache-buster in one commit. **Not yet merged t
 All branches are merged into `main` and the old ones deleted. To confirm that yourself at any point:
 `git fetch --prune` then `git branch -a --no-merged main` — empty output means nothing is outstanding.
 
-### Character library — stages A and A2 are built, and PARTLY VERIFIED
+### Character library — stages A and A2 are done and verified
 
-**Confirmed working on stream:** the character name renders, and all three caption toggles take
-effect live. The earlier symptoms were stale cached CSS in the browser source, now fixed by
-`static_v()` stamping stylesheet URLs with the file's mtime.
+Confirmed on stream: the character name renders, both names sit over the art and survive the mouth
+opening, and all three caption toggles take effect live.
 
-**Not yet confirmed:** the caption layout change that came afterwards — both names moved over the
-art, sizes reduced, and every size consolidated into `CAPTIONS`. Specifically unverified:
+Two things that cost time getting here, both worth not repeating:
 
-- Names sit correctly over the lower part of the art and stay legible
-- They **don't vanish while the mouth is open** — the captions share a stacking context with the
-  open-mouth image, so the `z-index` on `.art-captions` is load-bearing. This would show up as an
-  intermittent flicker only during speech, which is nasty to diagnose after the fact
-- Reported source size is stable when toggling either name, and only changes with the message
+- **Stale cached CSS in the browser source.** The page kept toggling classes against a stylesheet the
+  browser had cached from before those rules existed, so captions silently stopped hiding and new
+  elements rendered unstyled — with every symptom pointing at the code. Fixed by `static_v()`
+  stamping stylesheet URLs with the file's mtime.
+- **`textfill` sized each name to fit its own text**, so the *shorter* name came out larger and the
+  hierarchy was set by string length. Fixed by capping each with `maxFontPixels`.
 
-Also never run against a live app: reloading the panel and the browser source to confirm toggles
-persist, slot 2 showing its character name alone, and the width input recalculating.
-
-What **was** verified by direct test rather than by running the app: all four `characters.json`
-fallback paths, the size arithmetic against the real art, both templates rendering, the control
-panel's JavaScript parsing, and that every socket event has a matching sender and listener.
+Also verified by direct test rather than by running the app: all four `characters.json` fallback
+paths, the size arithmetic against the real art, both templates rendering, the control panel's
+JavaScript parsing, and that every socket event has a matching sender and listener.
 
 **How it works.** `characters.json` (gitignored; `characters.example.json` is the tracked template)
 defines characters with a display name, art, default voice and style, and three caption switches.
@@ -269,23 +265,16 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
 
 ## Picking it back up
 
-In order:
+Nothing is half-finished. `main` is clean, everything is pushed, and stages A and A2 are verified on
+stream. Pick from *Not done* above.
 
-1. **Restart the app and hard-refresh the overlay** (OBS: right-click the source → Refresh). Confirm
-   the character name appears and the caption checkboxes work. If not, use the diagnostic split under
-   *Character library* above rather than guessing.
-2. **Run the rest of the A2 smoke test**, none of which has been done against a running app:
-   - Untick *Message text* → the box vanishes and the reported size drops by 79px. Resize the OBS
-     source to match; the art must not move.
-   - Reload the control panel, then the browser source — both toggles stay off.
-   - Slot 2 (The Narrator) shows its character name only, no chatter name and no message.
-   - Change the reported width to 700 → the height recalculates.
-   - Delete `characters.json` and restart → everything falls back to the old behaviour, and startup
-     says *"Characters: none configured"*.
-3. **Commit.** Suggested split: the library and toggles as one commit, the cache-buster as its own,
-   since the second is a general fix rather than part of the feature.
-4. Then pick from *Not done* — the launcher script is the highest-value item that doesn't touch any
-   of this.
+**The launcher script is the recommendation** — install stage B, the highest-value item in that
+design, and it touches none of the character work. It's what the second streamer runs every single
+stream, and it's the thing that most reduces you being the support desk mid-broadcast.
+
+A few smaller checks were never run and are worth folding into whatever comes next rather than doing
+on their own: deleting `characters.json` and restarting to confirm the fallback path still works
+end to end, and the reported width input recalculating at values other than 500.
 
 ---
 
@@ -294,5 +283,5 @@ In order:
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 2 Aug 2026 — character library stages A and A2 written, two reported symptoms
-diagnosed as CSS caching and fixed but **not yet confirmed**, work uncommitted.
+Last updated: 2 Aug 2026 — character library stages A and A2 verified on stream and merged; repo
+moved out of OneDrive to `C:\dev\ChatGodApp`.
