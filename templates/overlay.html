@@ -7,7 +7,21 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/overlay.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/overlay.css') }}">
+
+    <!-- Caption sizes come from CAPTIONS in characters.py -- edit them there, not
+         here. That module also does the browser-source arithmetic, so one place
+         governs the look, the layout and the reported size. -->
+    <style>
+        :root {
+        {%- for name, height in box_sizes.items() %}
+            --{{ name | replace('_', '-') }}-height: {{ height }}px;
+        {%- endfor %}
+        {%- for name, font in caption_fonts.items() %}
+            --{{ name | replace('_', '-') }}-font: {{ font }}px;
+        {%- endfor %}
+        }
+    </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js" integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ==" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery-textfill@0.6.0/source/jquery.textfill.min.js"></script>
@@ -15,6 +29,13 @@
     <script type="text/javascript" charset="utf-8">
         // Players rendered on THIS page. With ?player=2 it's just ["2"].
         var PLAYERS = {{ numbers | tojson }};
+
+        // Caption font sizes, from CAPTIONS in characters.py. These are textfill's
+        // ceiling, not a fixed size: text that fits is drawn at exactly this, text
+        // that doesn't is shrunk until it does. That's what makes the character name
+        // reliably larger than the chatter name rather than whichever is shorter.
+        var CAPTION_FONTS = {{ caption_fonts | tojson }};
+        var BOX_HEIGHTS = {{ box_sizes | tojson }};
 
         // How loud the clip has to be before the mouth counts as open. Raise it if
         // the mouth barely closes, lower it if it barely opens.
@@ -32,12 +53,30 @@
 
             function refit() {
                 PLAYERS.forEach(function(n) {
-                    $('#user-name-box-' + n).textfill({
-                        minFontPixels: 2, maxFontPixels: 50, explicitHeight: 60
-                    });
-                    $('#user-message-box-' + n).textfill({
-                        minFontPixels: 2, maxFontPixels: 30
-                    });
+                    // A hidden box has no height, and textfill on a zero-height
+                    // element shrinks the text to its minimum -- which then stays
+                    // shrunk when the box is shown again.
+                    var slot = $('#player-slot-' + n);
+                    if (!slot.hasClass('hide-character-name')) {
+                        $('#character-name-box-' + n).textfill({
+                            minFontPixels: 8,
+                            maxFontPixels: CAPTION_FONTS.character_name,
+                            explicitHeight: BOX_HEIGHTS.character_name
+                        });
+                    }
+                    if (!slot.hasClass('hide-chatter-name')) {
+                        $('#user-name-box-' + n).textfill({
+                            minFontPixels: 6,
+                            maxFontPixels: CAPTION_FONTS.chatter_name,
+                            explicitHeight: BOX_HEIGHTS.chatter_name
+                        });
+                    }
+                    if (!slot.hasClass('hide-message')) {
+                        $('#user-message-box-' + n).textfill({
+                            minFontPixels: 2,
+                            maxFontPixels: CAPTION_FONTS.message * 2
+                        });
+                    }
                 });
             }
 
@@ -54,6 +93,18 @@
                 if (PLAYERS.indexOf(msg.user_number) === -1) return;
                 $('#user-message-' + msg.user_number).text(msg.message);
                 $('#user-name-' + msg.user_number).text(titleCase(msg.current_user));
+                refit();
+            });
+
+            // Captions toggled from the control panel. Classes only -- the boxes
+            // collapse to nothing, and since the art is anchored to the top of the
+            // slot it doesn't move when they do.
+            socket.on('display_changed', function(msg) {
+                if (PLAYERS.indexOf(msg.user_number) === -1) return;
+                var slot = $('#player-slot-' + msg.user_number);
+                slot.toggleClass('hide-character-name', !msg.show_character_name);
+                slot.toggleClass('hide-chatter-name',   !msg.show_chatter_name);
+                slot.toggleClass('hide-message',        !msg.show_message);
                 refit();
             });
 
@@ -178,16 +229,29 @@
 
     <div class="overlay-row">
         {% for n in numbers %}
-        <div class="player-slot" id="player-slot-{{ n }}">
+        <div class="player-slot{% if not flags[n].show_character_name %} hide-character-name{% endif %}{% if not flags[n].show_chatter_name %} hide-chatter-name{% endif %}{% if not flags[n].show_message %} hide-message{% endif %}"
+             id="player-slot-{{ n }}">
 
+            {% if images[n].closed %}
             <div class="character">
                 <img class="character-art mouth-closed" src="{{ images[n].closed }}" alt="">
+                {% if images[n].open %}
                 <img class="character-art mouth-open"   src="{{ images[n].open }}"   alt="">
-            </div>
+                {% endif %}
 
-            <div class="user-name-box" id="user-name-box-{{ n }}">
-                <span class="user-name" id="user-name-{{ n }}">&nbsp;</span>
+                <!-- Names sit over the bottom of the art, not under it, so toggling
+                     one can never change the height of the browser source. -->
+                <div class="art-captions">
+                    <div class="character-name-box" id="character-name-box-{{ n }}">
+                        <span class="character-name" id="character-name-{{ n }}">{{ character_names[n] or '&nbsp;' | safe }}</span>
+                    </div>
+                    <div class="user-name-box" id="user-name-box-{{ n }}">
+                        <span class="user-name" id="user-name-{{ n }}">&nbsp;</span>
+                    </div>
+                </div>
             </div>
+            {% endif %}
+
             <div class="user-message-box" id="user-message-box-{{ n }}">
                 <span class="user-message" id="user-message-{{ n }}">&nbsp;</span>
             </div>

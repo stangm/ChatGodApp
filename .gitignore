@@ -43,3 +43,7 @@ audio/
 # Written by fetch_voices.py and specific to the locales and flags you chose.
 # voices.default.json is the tracked fallback, used when this file is absent.
 voices.json
+
+# Your character library: names, art paths and display settings, referencing art
+# that only exists on your disk. characters.example.json is the tracked template.
+characters.json

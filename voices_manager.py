@@ -11,13 +11,24 @@ class TTSManager:
     the bot thread is never blocked waiting for a clip to finish.
     """
 
-    def __init__(self):
+    def __init__(self, slots=None):
         self.azuretts_manager = AzureTTSManager()
 
-        self.voices = {
-            number: {"name": config["voice_name"], "style": DEFAULT_VOICE_STYLE}
-            for number, config in PLAYER_CONFIG.items()
-        }
+        # Layer 1 of voice resolution is the character's default, so seed from the
+        # library when there is one. Falling back to players.py keeps a fresh clone
+        # working: no characters.json means the character library synthesizes an
+        # entry per slot carrying exactly this voice anyway, so the two agree.
+        if slots:
+            self.voices = {
+                number: {"name": character.default_voice or PLAYER_CONFIG[number]["voice_name"],
+                         "style": character.default_style}
+                for number, character in slots.items()
+            }
+        else:
+            self.voices = {
+                number: {"name": config["voice_name"], "style": DEFAULT_VOICE_STYLE}
+                for number, config in PLAYER_CONFIG.items()
+            }
 
         # Only constructed when explicitly enabled. Off by default, so a closed OBS
         # is no longer able to take the whole app down at startup.

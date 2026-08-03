@@ -233,10 +233,67 @@ shows "this voice has no speaking styles" rather than offering options that won'
 Add `player4-closed.png` / `player4-open.png`, restart, and add a browser source pointing at
 `?player=4`. Nothing else needs to change.
 
+**Naming your characters** — copy `characters.example.json` to `characters.json`. A character has a
+display name that shows on stream, its own art, a default voice and style, and three switches for
+what appears beneath it:
+
+```json
+"wizard": {
+  "display_name": "Henry Potter",
+  "art_closed": "characters/wizard-closed.png",
+  "art_open":   "characters/wizard-open.png",
+  "default_voice": "en-US-DavisNeural",
+  "show_character_name": true,
+  "show_chatter_name": true,
+  "show_message": false
+}
+```
+
+Assign it with `"slots": { "1": { "character": "wizard" } }`. Slots you don't mention keep using
+`players.py` and the `player<N>-*.png` convention, so you can convert one at a time. The file is
+gitignored and the app never writes to it.
+
+Both names are drawn **over** the lower part of the art — "Henry Potter" larger, `silverstagvt`
+smaller underneath. Because they sit on the art rather than below it, turning either on or off never
+changes how tall the browser source needs to be, so there's nothing to resize in OBS. All three
+switches are live on the control panel, so you can change what's shown mid-stream.
+
+The message text is the exception: it's stacked below the art, so **it's the only toggle that
+changes the source height.**
+
+**Browser source size** is reported by the control panel per player and updates as you toggle. Don't
+calculate it by hand.
+
 **Mouth too twitchy, or barely opening?** The threshold and the minimum gap between mouth swaps
 are both at the top of `templates/overlay.html`, with comments explaining which way to move them.
 
-**Default voices per player** are the `voice_name` values in `players.py`.
+**Caption text too big or too small?** `CAPTIONS` at the top of `characters.py` — one dict, and the
+only place these numbers live:
+
+```python
+CAPTIONS = {
+    "character_name": {"font": 30, "box": 36},
+    "chatter_name":   {"font": 18, "box": 24},
+    "message":        {"font": 15, "box": 85},
+}
+```
+
+`font` is the size text is drawn at when it fits; longer text is shrunk to fit rather than
+overflowing. `box` is the space the line occupies — keep it above `font` by about 6 or descenders
+clip. Restart and refresh the source.
+
+Don't set these in the CSS: the overlay sizes text with a script that writes an inline `font-size`,
+which beats the stylesheet, so a CSS-only edit looks like it did nothing. `overlay.css` reads these
+same values as custom properties.
+
+Raising the `message` box changes the browser source height — the names don't, since they're drawn
+over the art.
+
+**Restyling anything else** — `static/css/overlay.css`. Stylesheet URLs carry the file's timestamp,
+so an edit reaches OBS on the next source refresh instead of being masked by its cache.
+
+**Default voices per player** are the `voice_name` values in `players.py`, or `default_voice` on the
+character once you have a `characters.json`.
 
 ---
 
@@ -251,6 +308,9 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 | Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page |
 | Text appears, no audio | Check the browser source isn't muted in OBS's Audio Mixer |
 | Mouth never closes / never opens | Adjust the threshold in `templates/overlay.html` |
+| Character name doesn't appear | The character has no `display_name`, or the app was already running when you created `characters.json` — it's read once at startup |
+| Caption toggles change nothing on stream | Refresh the browser source. If it persists, check the server console prints `show_message is now False` when you click |
+| Edited `characters.json`, nothing changed | Restart the app. Nothing re-reads it while running |
 | `AttributeError` from twitchio at startup | twitchio 3.x got installed — `pip install -r requirements.txt` pins it below 3 |
 | 404 "Unknown player" | The `?player=` number has no entry in `players.py` |
 
@@ -263,7 +323,10 @@ are both at the top of `templates/overlay.html`, with comments explaining which 
 | `PROJECT-STATE.md` | Where the project currently stands — what works, what's in flight, what wastes your time. Start here if you're picking the project back up |
 | `chat_god_app.py` | Flask app, Twitch bot, socket handlers, routes |
 | `config.py` | Resolves every setting: `CHATGOD_` variable, then the legacy name, then a default |
-| `players.py` | Player config — the only file you edit to add or retune a player |
+| `players.py` | Player config — which slots exist, keyphrases, fallback voices |
+| `characters.py` | Reads `characters.json`, resolves each slot to a character, and works out the OBS browser source size |
+| `characters.example.json` | Template for your own `characters.json` — names, art, default voices, caption switches. Copy it to start. Your copy is gitignored |
+| `display_manager.py` | Live caption visibility per slot, what the control panel toggles |
 | `voices_manager.py` | Voice state per player, synthesis calls |
 | `azure_text_to_speech.py` | Azure TTS with a gTTS fallback, and the voice/style catalog |
 | `fetch_voices.py` | Asks Azure for the voice list and writes `voices.json`. Run once at setup, again whenever you want to refresh |

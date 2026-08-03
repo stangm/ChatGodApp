@@ -42,27 +42,83 @@ over HTTP → OBS browser source plays it → mouth animates. Verified on 2 Aug 
 Also verified: the voice catalogue and per-voice style narrowing, including the style-reset path when
 switching to a voice with no styles (all 15 `en-AU` voices have none, which is the useful test case).
 
-### Branches
+### Git state
 
-`main` is at `e2db958`. Two branches sit ahead of it:
+`main` is at `492d30c`, with the live-state fix and the `config.py` refactor merged and tested.
 
-| Branch | Contains | State |
-|---|---|---|
-| `fix/control-panel-live-state` | Live control panel state; casts design | Tested, pushed |
-| `refactor/config-module` | `config.py`, `CHATGOD_` prefix | **Untested, uncommitted** |
+**The character library work is uncommitted in the working tree, directly on `main`** — three new
+files (`characters.py`, `display_manager.py`, `characters.example.json`) plus edits to
+`chat_god_app.py`, both templates, both stylesheets, `voices_manager.py`, `.gitignore` and the docs.
+Mark intends to commit it; a branch would be tidier than committing straight to `main`.
 
-Merge order matters — the config work branches off the live-state work.
+> **Commits and pushes have to be run by Mark**, not from the sandbox — see the git/OneDrive lock
+> problem below.
+
+### Character library — stages A and A2 are built, and PARTLY VERIFIED
+
+**Two symptoms were reported and are not confirmed fixed.** Ask before assuming this works:
+
+1. The character name didn't appear on the overlay.
+2. The chatter-name and message checkboxes had no visible effect.
+
+The diagnosis was **stale cached CSS in the browser source** — the page kept toggling classes against
+a stylesheet the browser had cached from before the new rules existed, which produces exactly both
+symptoms while the server behaves correctly. The fix was a `static_v()` context processor appending
+each stylesheet's mtime to its URL. **Mark stepped away before confirming it.**
+
+If the symptoms persist after a restart and a hard refresh, the cache theory is wrong and the two
+split apart:
+
+- *Name still missing* — check whether `<span class="character-name">` is in the DOM (right-click the
+  source → Interact). Present but invisible points at `textfill` shrinking it to `minFontPixels`.
+  Absent means the server didn't see `characters.json`, which happens if the app was already running
+  when the file was created — the library loads once at import.
+- *Toggles still inert* — watch the server console. `Player 1: show_message is now False` means the
+  socket round trip is fine and it's purely overlay CSS. Silence means the panel isn't reaching the
+  server.
+
+What **was** verified, by direct test rather than by running the app: all four `characters.json`
+fallback paths, the size arithmetic against the real art, both templates rendering, the control
+panel's JavaScript parsing, and that every socket event has a matching sender and listener.
+
+**How it works.** `characters.json` (gitignored; `characters.example.json` is the tracked template)
+defines characters with a display name, art, default voice and style, and three caption switches.
+Slots it doesn't mention fall back to `players.py` and the `player<N>-*.png` convention, so **an
+install with no `characters.json` behaves exactly as it did before** — the main compatibility
+guarantee, and worth preserving.
+
+The overlay draws the character name above the chatter name, **both over the lower part of the art**
+so neither affects the browser source height. The message text stays stacked below and is the only
+toggle that changes the size. The control panel toggles all three live and reports the size.
+
+Mark's own `characters.json` is currently a copy of the example — Henry Potter in slot 1, The
+Narrator in slot 2.
+
+Stages C–F (the `/setup` screen, assignment, art upload, casts) are not built. Runtime assignment
+doesn't exist, so the character in a slot is fixed for the session and `DisplayManager.reset_to()`
+has no caller yet.
 
 ### Not done
 
-1. **`config.json`** — stage A of the install design is half done. `config.py` owns every read; the
+1. **`config.json`** — stage A of the *install* design is half done. `config.py` owns every read; the
    JSON layer itself isn't built.
-2. **Stage A2 — display toggles.** Character name above chatter name, per-character show/hide flags,
-   overlay self-sizing, control panel reporting browser-source dimensions.
-3. **Nothing survives a restart.** Voice, style, TTS toggle and assignments are in-memory and rebuild
-   from `players.py` defaults. A crash mid-stream silently reverts everything. The control panel now
-   *shows* this honestly instead of lying about it, which is an improvement but not a fix.
-4. **The character library** — the large one. `DESIGN_CHARACTER_LIBRARY.md`, stages A–F.
+2. **Nothing survives a restart.** Voice, style, TTS toggle, caption toggles and assignments are all
+   in-memory and rebuild from character defaults. A crash mid-stream silently reverts everything. The
+   control panel now *shows* this honestly instead of lying about it, which is an improvement but
+   not a fix.
+3. **Layer-2 state lives in two managers.** `TTSManager.voices` holds live voice, `DisplayManager`
+   holds live captions, for the same slot. They should probably become one slot-state object when
+   assignment lands — noted in `display_manager.py`.
+4. **The rest of the character library** — `DESIGN_CHARACTER_LIBRARY.md`, stages C–G. Stage G is an
+   appearance endpoint: typeface, caption sizes and mouth tuning out of source and into
+   `characters.json`, applied live over the socket. Independent of C–F, and the sizes half is cheaper
+   than it sounds because every caption size is already a CSS custom property. Font selection is the
+   expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
+   family locally when it's picked.
+5. **The launcher script** — install stage B, and the highest-value item in that design: it's what
+   the second streamer touches every stream, and it's independent of everything above.
+6. **`templates/index.html` is still orphaned.** 307 lines of superseded markup that no route
+   renders, now diverged further from `control.html`. Delete or repurpose it for `/setup`.
 
 ---
 
@@ -86,7 +142,9 @@ sound natively and no OBS plugin or Move filter is involved any more.
 |---|---|
 | `chat_god_app.py` | Flask + SocketIO, routes, socket handlers, the twitchio Bot, SpeechWorker |
 | `config.py` | Every setting read. `setting('azure_key')` and friends |
-| `players.py` | Which slots exist, keyphrases, default voices. Hand-edited |
+| `characters.py` | The library read path, plus the browser-source size arithmetic and `BOX_HEIGHTS` |
+| `display_manager.py` | Live caption visibility per slot |
+| `players.py` | Which slots exist, keyphrases, fallback voices. Hand-edited |
 | `voices_manager.py` | Per-slot live voice/style; the override layer the control panel edits |
 | `azure_text_to_speech.py` | Synthesis, style resolution, gTTS fallback |
 | `fetch_voices.py` | Builds `voices.json` from Azure. Run manually |
@@ -114,7 +172,7 @@ old unprefixed names still work; startup names any it falls back to.
 |---|---|---|
 | `players.py` | Hand | Yes |
 | `voices.json` | `fetch_voices.py` | No — `voices.default.json` is the tracked fallback |
-| `characters.json` | Setup screen | No, and doesn't exist yet |
+| `characters.json` | Hand, for now — setup screen at stage D | No — `characters.example.json` is tracked |
 
 ---
 
@@ -139,12 +197,21 @@ must be **off**, or OBS tears the page down and drops the socket. *Control audio
 **on**, but OBS then defaults to Monitor Off — so it's in the stream and not your headphones. Set
 Audio Monitoring to *Monitor and Output*.
 
-**Browser source height** = width × art aspect ratio + 125px for the boxes. At 500 wide: player 1
-is 513, player 2 is 445, player 3 is 451. Too short clips the message box. This arithmetic is meant
-to be replaced by the app reporting the size — see `DESIGN_CHARACTER_LIBRARY.md`.
+**Don't calculate the browser source size by hand any more** — the control panel reports it per
+player and updates as captions are toggled.
 
-**Browser sources cache images hard.** Any art swap needs a cache-busting query string or nothing
-visibly changes.
+**Caption sizes belong in `CAPTIONS` in `characters.py`, never in the CSS.** The overlay sizes text
+with `textfill`, which writes an inline `font-size` that beats the stylesheet — so a CSS-only edit
+appears to do nothing at all. `overlay.css` reads the same values as custom properties, and the same
+dict feeds the source-height arithmetic.
+
+**Browser sources cache CSS and images hard**, across scene switches and app restarts. Stylesheet
+links go through `static_v()` (a Flask context processor appending the file's mtime) so an edit
+always reaches the browser. Art swaps will need the same treatment.
+
+This failure is nastier than it sounds: the page keeps toggling classes against rules the cached
+stylesheet doesn't have, so captions stop hiding and new elements render unstyled — and every symptom
+points at the code rather than the cache. It cost a debugging round the first time it happened.
 
 **Flask-SocketIO refuses to start when `sys.stdin` isn't a TTY**, raising a Werkzeug "not designed
 for production" error. Running from PowerShell is fine, so this hasn't bitten yet — but it will
@@ -168,6 +235,10 @@ Don't relitigate these without a reason. Rationale is in the design docs; this i
 | Art top-anchored so it never moves when captions toggle | `DESIGN_CHARACTER_LIBRARY.md` |
 | Deleting a character keeps the art files | `DESIGN_CHARACTER_LIBRARY.md` |
 | A cast is N assignments, not a new mechanism | `DESIGN_CHARACTER_LIBRARY.md` |
+| Names drawn over the art (no resizing); message stacked below (would bury the character) | `DESIGN_CHARACTER_LIBRARY.md` |
+| Name size hierarchy set by `maxFontPixels` caps, not by fitting — fitting let string length decide which name looked bigger | `templates/overlay.html` |
+| Caption boxes `display:none` so the source can shrink; art top-anchored so it never moves | `static/css/overlay.css` |
+| Size arithmetic split — policy on the server, one multiply in the browser | `characters.py` |
 | Launcher script, not a PyInstaller build | `DESIGN_GUIDED_INSTALL.md` |
 | Premium Azure voices excluded by default (they bill separately) | `fetch_voices.py` |
 | Legacy env names kept, but announced loudly at startup | `config.py` |
@@ -188,9 +259,32 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
 
 ---
 
+## Picking it back up
+
+In order:
+
+1. **Restart the app and hard-refresh the overlay** (OBS: right-click the source → Refresh). Confirm
+   the character name appears and the caption checkboxes work. If not, use the diagnostic split under
+   *Character library* above rather than guessing.
+2. **Run the rest of the A2 smoke test**, none of which has been done against a running app:
+   - Untick *Message text* → the box vanishes and the reported size drops by 79px. Resize the OBS
+     source to match; the art must not move.
+   - Reload the control panel, then the browser source — both toggles stay off.
+   - Slot 2 (The Narrator) shows its character name only, no chatter name and no message.
+   - Change the reported width to 700 → the height recalculates.
+   - Delete `characters.json` and restart → everything falls back to the old behaviour, and startup
+     says *"Characters: none configured"*.
+3. **Commit.** Suggested split: the library and toggles as one commit, the cache-buster as its own,
+   since the second is a general fix rather than part of the feature.
+4. Then pick from *Not done* — the launcher script is the highest-value item that doesn't touch any
+   of this.
+
+---
+
 ## Keeping this file honest
 
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 2 Aug 2026 — after the control-panel live-state fix and the `config.py` refactor.
+Last updated: 2 Aug 2026 — character library stages A and A2 written, two reported symptoms
+diagnosed as CSS caching and fixed but **not yet confirmed**, work uncommitted.

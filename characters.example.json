@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "Copy this to characters.json to use it. That file is gitignored and never",
+    "overwritten by the app -- it's yours.",
+    "",
+    "Every field is optional. A slot with no entry here falls back to players.py",
+    "and the characters/player<N>-*.png naming convention, so you can convert one",
+    "slot at a time. Art paths are relative to static/.",
+    "",
+    "\"character\": null empties a slot deliberately -- no art, nothing drawn."
+  ],
+
+  "characters": {
+    "wizard": {
+      "display_name": "Henry Potter",
+      "art_closed": "characters/player1-closed.png",
+      "art_open": "characters/player1-open.png",
+      "default_voice": "en-US-DavisNeural",
+      "default_style": "random",
+      "show_character_name": true,
+      "show_chatter_name": true,
+      "show_message": true
+    },
+    "narrator": {
+      "display_name": "The Narrator",
+      "art_closed": "characters/player2-closed.png",
+      "art_open": "characters/player2-open.png",
+      "default_voice": "en-US-TonyNeural",
+      "default_style": "random",
+      "show_character_name": true,
+      "show_chatter_name": false,
+      "show_message": false
+    }
+  },
+
+  "slots": {
+    "1": { "character": "wizard" },
+    "2": { "character": "narrator" }
+  }
+}

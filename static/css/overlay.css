@@ -18,10 +18,19 @@ html, body {
     scrollbar-width: none; /* firefox support */
 }
 
+/*
+   Anchored to the TOP, not the bottom.
+
+   Captions can now be toggled on and off while the stream is live, which changes
+   how tall each slot's content is. Anchored to the bottom, every character would
+   slide up and down the canvas as captions appear and disappear. Anchored to the
+   top, the art stays exactly where it was positioned in OBS and only the space
+   underneath it changes -- which is transparent, so nothing visible moves.
+*/
 .overlay-row {
     display: flex;
     flex-direction: row;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 87px;
 }
 
@@ -61,25 +70,71 @@ html, body {
     visibility: visible;
 }
 
-/* ---- name and message ------------------------------------------------------ */
+/* ---- names, drawn over the art ----------------------------------------------
+
+   Both names sit on the lower part of the character rather than beneath it. The
+   consequence that matters: the browser source height equals the art height (plus
+   the message box if that's on), so toggling a name never requires resizing the
+   source in OBS. There's no dead space and no arithmetic to redo.
+
+   Heights come from CSS custom properties rendered by overlay.html out of BOX_SIZES
+   in characters.py, which is also where the reported source height is calculated --
+   so a change here can't silently disagree with the number the control panel shows.
+*/
+
+.art-captions {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 8px;
+    line-height: normal;   /* .character sets 0, which would collapse the text */
+    text-align: center;
+    /* Above the open-mouth image, which is also positioned. Without this the
+       captions disappear behind the art for as long as the mouth is open. */
+    z-index: 1;
+}
+
+.character-name-box {
+    width: 100%;
+    height: var(--character-name-height);
+    padding: 0;
+    text-align: center;
+}
+
+/* Heavier and with a thicker outline than the chatter name -- it has to stay
+   legible over whatever the art happens to be behind it. */
+.character-name {
+    font-size: var(--character-name-font);
+    font-weight: 700;
+    color: rgb(255, 255, 255);
+    text-shadow: -3px 0 black, 0 3px black, 3px 0 black, 0 -3px black,
+                 -2px -2px black, 2px 2px black, -2px 2px black, 2px -2px black;
+}
 
 .user-name-box {
     width: 100%;
-    height: 40px;
+    height: var(--chatter-name-height);
     padding: 0;
-    margin-top: 6px;
     text-align: center;
 }
 
 .user-name {
-    font-size: 35px;
+    font-size: var(--chatter-name-font);
     color: rgb(255, 255, 255);
-    text-shadow: -3px 0 black, 0 3px black, 3px 0 black, 0 -3px black;
+    text-shadow: -2px 0 black, 0 2px black, 2px 0 black, 0 -2px black,
+                 -1px -1px black, 1px 1px black, -1px 1px black, 1px -1px black;
 }
+
+/* ---- message text, still stacked below the art -----------------------------
+
+   The one caption that isn't overlaid. It's long enough to bury the character if it
+   sat on top, so it keeps its own space -- which means turning it on or off is the
+   only toggle that still changes the browser source height.
+*/
 
 .user-message-box {
     width: 100%;
-    height: 85px;
+    height: calc(var(--message-height) + 6px);
     padding: 0;
     margin-top: -6px;
     text-align: center;
@@ -87,6 +142,23 @@ html, body {
 }
 
 .user-message {
-    font-size: 15px;
+    font-size: var(--message-font);
     color: #79f1ff;
+}
+
+/* ---- hiding captions -------------------------------------------------------
+
+   display:none rather than visibility:hidden or opacity:0, because the box has to
+   stop taking up space -- the whole point is that the browser source can shrink to
+   what's actually shown. Hiding it any other way leaves a transparent gap and the
+   reported source height would be wrong.
+
+   The classes are set server-side on first render and toggled over the socket, so
+   a browser-source reload shows the same thing as a live toggle.
+*/
+
+.player-slot.hide-character-name .character-name-box,
+.player-slot.hide-chatter-name  .user-name-box,
+.player-slot.hide-message       .user-message-box {
+    display: none;
 }

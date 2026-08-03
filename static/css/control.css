@@ -175,6 +175,84 @@ input[type="text"], select {
 
 .field { display: block; margin-bottom: 10px; }
 
+/* ---- what shows on stream ---------------------------------------------------
+
+   Grouped and bordered because these three are one decision about the character
+   rather than three unrelated switches, and the panel is dense enough that a run
+   of loose checkboxes reads as a list of unrelated options.
+*/
+
+.shows {
+    margin: 14px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--panel-edge);
+    border-radius: 8px;
+}
+
+.shows .toggle { margin: 8px 0; }
+.shows .toggle em { color: var(--muted); font-style: normal; }
+
+/* A character with no display_name can't show one, so the box is disabled rather
+   than removed -- removing it would leave you wondering where the setting went. */
+.shows input:disabled { cursor: not-allowed; opacity: 0.4; }
+.shows input:disabled + span { color: var(--muted); }
+
+/* ---- browser source url and size ------------------------------------------- */
+
+.source {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--panel-edge);
+}
+
+.source-url {
+    display: block;
+    font-size: 11px;
+    color: var(--accent);
+    word-break: break-all;
+    margin-bottom: 8px;
+}
+
+.source-size {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.source-size input[type="number"] {
+    width: 68px;
+    padding: 4px 6px;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--panel-edge);
+    border-radius: 5px;
+}
+
+/* The number itself is the point of this block, so it gets the emphasis. */
+.size-readout {
+    font-size: 14px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
+.size-readout.unknown { color: var(--warn); font-size: 12px; }
+
+.copy-size {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--panel-edge);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.copy-size:hover { border-color: var(--accent); color: var(--accent); }
+
 .last-message {
     margin-top: 12px;
     padding-top: 10px;

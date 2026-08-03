@@ -231,8 +231,16 @@ Add one **Browser** source per player:
 | Player 2 | `http://127.0.0.1:5000/overlay?player=2` |
 | Player 3 | `http://127.0.0.1:5000/overlay?player=3` |
 
-Set the width and height to roughly your character art's dimensions, then position and scale each
-source independently on the canvas.
+**The control panel tells you the size.** Each player's block shows its source URL and the exact
+dimensions, with a width you can change and a copy button. Use those numbers rather than guessing —
+too short clips the message box, and the right height depends on which captions you have switched on.
+
+Then position and scale each source independently on the canvas.
+
+> **Only the message text changes the size.** Both names are drawn over the art, so toggling them
+> needs no resizing. Turning the message on or off does, and the panel's number updates as you click.
+> The art is anchored to the top of the source, so a source that's too tall only leaves transparent
+> space at the bottom — your character doesn't move.
 
 That's the entire OBS setup. No plugins, no audio capture source, no filters, no websocket password,
 and OBS doesn't need to be open for the app to run.

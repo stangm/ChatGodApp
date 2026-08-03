@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/control.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/control.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js" integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ==" crossorigin="anonymous"></script>
 
@@ -27,6 +27,56 @@
 
             $('input.tts-checkbox').on('change', function() {
                 socket.emit('tts', { user_number: player(this), checked: $(this).prop('checked') });
+            });
+
+            // ---- what shows on stream, and how big the source has to be ----
+
+            // Per player: {art_w, art_h, boxes}, or null when the art size couldn't
+            // be read. The server decides which caption boxes count -- including
+            // that a character with no name never counts its name box -- so all
+            // that happens here is scaling the art and adding the total.
+            var SIZE_PARTS = {};
+
+            function showSize(number) {
+                var parts = SIZE_PARTS[number];
+                var readout = $('#source-readout-' + number);
+                if (!parts) {
+                    readout.text('size unknown').addClass('unknown');
+                    return;
+                }
+                var width = parseInt($('#source-width-' + number).val(), 10);
+                if (!width || width < 1) { readout.text('—').addClass('unknown'); return; }
+                var height = Math.round(width * parts.art_h / parts.art_w) + parts.boxes;
+                readout.text(width + ' × ' + height).removeClass('unknown');
+            }
+
+            $('input.display-checkbox').on('change', function() {
+                socket.emit('display', {
+                    user_number: player(this),
+                    flag: $(this).data('flag'),
+                    checked: $(this).prop('checked')
+                });
+            });
+
+            $('input.source-width').on('input', function() { showSize(player(this)); });
+
+            $('button.copy-size').on('click', function() {
+                var number = $(this).data('target') + '';
+                var text = $('#source-readout-' + number).text();
+                // Clipboard API needs a secure context; 127.0.0.1 counts as one, but
+                // fall back rather than failing silently if it ever doesn't.
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text);
+                } else {
+                    window.prompt('Copy the source size:', text);
+                }
+            });
+
+            // The overlay is the other consumer of this event; the panel listens so
+            // the reported size follows a toggle without a round trip of its own.
+            socket.on('display_changed', function(msg) {
+                SIZE_PARTS[msg.user_number] = msg.size_parts;
+                showSize(msg.user_number);
             });
 
             $('form.choose').on('submit', function(e) {
@@ -104,6 +154,15 @@
                     $('#assigned-' + number).text(live.current_user || '(nobody)');
                     $('#voicename-' + number).val(live.voice_name);
                     refreshStyles(number, live.voice_name, live.voice_style);
+
+                    $('#show_character_name-' + number)
+                        .prop('checked', live.show_character_name)
+                        .prop('disabled', !live.has_character_name);
+                    $('#show_chatter_name-' + number).prop('checked', live.show_chatter_name);
+                    $('#show_message-' + number).prop('checked', live.show_message);
+
+                    SIZE_PARTS[number] = live.size_parts;
+                    showSize(number);
                 });
             });
 
@@ -127,10 +186,19 @@
     </header>
 
     <p class="hint">
-        This page is for you, not for stream. Add the overlay to OBS as a Browser source:
-        <code>http://127.0.0.1:5000/overlay?player=1</code> (one per player), or
-        <code>http://127.0.0.1:5000/overlay</code> for all of them in a row.
+        This page is for you, not for stream. Each player below shows its own browser source URL and
+        the exact size to make it &mdash; that size changes as you toggle what's shown, so re-check it
+        after changing captions. <code>http://127.0.0.1:5000/overlay</code> puts them all in one row
+        instead.
     </p>
+
+    {% if characters_source == 'defaults' %}
+    <p class="hint">
+        No <code>characters.json</code>, so each player is using its <code>players.py</code> voice and
+        the <code>player&lt;N&gt;-*.png</code> art. Copy <code>characters.example.json</code> to
+        <code>characters.json</code> to give your characters names and their own art.
+    </p>
+    {% endif %}
 
     {% if voices_source == 'default' %}
     <p class="hint warn">
@@ -176,6 +244,43 @@
                        {% if live.tts_enabled %}checked{% endif %}>
                 <span>Text to speech</span>
             </label>
+
+            <div class="shows">
+                <span class="label">Show on stream</span>
+
+                <label class="toggle" {% if not live.has_character_name %}title="This character has no name. Add display_name in characters.json."{% endif %}>
+                    <input type="checkbox" class="display-checkbox" data-flag="show_character_name"
+                           id="show_character_name-{{ number }}"
+                           {% if live.show_character_name %}checked{% endif %}
+                           {% if not live.has_character_name %}disabled{% endif %}>
+                    <span>Character name{% if live.character_name %} <em>({{ live.character_name }})</em>{% endif %}</span>
+                </label>
+
+                <label class="toggle">
+                    <input type="checkbox" class="display-checkbox" data-flag="show_chatter_name"
+                           id="show_chatter_name-{{ number }}"
+                           {% if live.show_chatter_name %}checked{% endif %}>
+                    <span>Chatter name</span>
+                </label>
+
+                <label class="toggle">
+                    <input type="checkbox" class="display-checkbox" data-flag="show_message"
+                           id="show_message-{{ number }}"
+                           {% if live.show_message %}checked{% endif %}>
+                    <span>Message text</span>
+                </label>
+            </div>
+
+            <div class="source">
+                <span class="label">OBS browser source</span>
+                <code class="source-url" id="source-url-{{ number }}">http://127.0.0.1:5000/overlay?player={{ number }}</code>
+                <div class="source-size">
+                    <label>width <input type="number" class="source-width" id="source-width-{{ number }}"
+                                        value="500" min="50" step="10"></label>
+                    <span class="size-readout" id="source-readout-{{ number }}">&mdash;</span>
+                    <button type="button" class="copy-size" data-target="{{ number }}">copy</button>
+                </div>
+            </div>
 
             <label class="field">
                 <span class="label">Voice</span>

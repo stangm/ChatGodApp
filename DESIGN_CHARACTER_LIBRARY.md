@@ -127,18 +127,25 @@ so assigning the Wizard brings his display settings with him, the same way his v
 | Chatter name | `silverstagvt` | on |
 | Message text | what they typed | on |
 
-Character name on top and larger, chatter name smaller beneath it:
+Character name on top and larger, chatter name smaller beneath it, both drawn **over** the lower
+part of the art so neither affects the source height:
 
 ```
         ┌─────────────────┐
         │   character art │
+        │                 │
+        │   Henry Potter  │   <- character name, larger, over the art
+        │    silverstagvt │   <- chatter name, smaller, over the art
         └─────────────────┘
-           Henry Potter          <- character name, larger
-            silverstagvt         <- chatter name, smaller
         ┌─────────────────┐
-        │ message text    │
+        │ message text    │   <- the only caption that adds height
         └─────────────────┘
 ```
+
+**The size hierarchy has to be set by caps, not by fitting.** `textfill` scales each box to fit its
+own text, so sizing both purely to fit made whichever name was *shorter* the larger one — string
+length deciding the visual hierarchy. Each box now has a `maxFontPixels` encoding its rank (30 and
+18), and shrinking only happens when a name is too long to fit.
 
 Toggles follow the same three layers as voice: the character holds the persisted default, the
 control panel edits live, **save as default** writes back. Assigning a character resets to its
@@ -172,6 +179,19 @@ Cost: a different look, and captions land on the character if the art fills the 
 
 **Decision: A**, because it preserves the current layout and is the smaller change. B is the more
 robust answer and is the fix if the dead space turns out to be irritating in practice.
+
+> **Revised after seeing A on stream: the names moved to B, the message stayed on A.**
+>
+> A was built and immediately felt wrong — every caption toggle meant resizing the source in OBS,
+> which is exactly the friction B exists to remove. The names are short and sit over the lower part
+> of the art comfortably, so they moved. The message text didn't: it's long enough to bury the
+> character, and it's the caption most likely to be left off anyway.
+>
+> The result is that **only the message toggle changes the source height.** Both names are free.
+> That's most of B's benefit without putting a paragraph of chat over someone's chest.
+>
+> Consequence to remember: the captions are inside the positioned `.character` element and need
+> `z-index` above the open-mouth image, or they vanish for as long as the mouth is open.
 
 ### The app should report the source size
 
@@ -251,6 +271,137 @@ single-slot assignment works.
 
 ---
 
+## Appearance settings — an endpoint for the look
+
+Everything about how the overlay *looks* is currently a constant in source. Changing a font size
+means editing `characters.py`; changing the typeface means editing the stylesheet *and* a `<link>` in
+the template; changing how twitchy the mouth is means editing `overlay.html`. All fine for the person
+who wrote them and hopeless for anyone else — and all exactly the kind of thing you fiddle with
+repeatedly before settling.
+
+### What's currently hardcoded
+
+| Value | Lives in | What it does |
+|---|---|---|
+| `CAPTIONS` fonts and boxes | `characters.py` | Caption text size and line height |
+| `font-family: 'Roboto'` | `static/css/overlay.css`, loaded in `overlay.html` | The typeface, everywhere |
+| `OPEN_THRESHOLD` | `templates/overlay.html` | How loud counts as mouth-open |
+| `MIN_HOLD_MS` | `templates/overlay.html` | Minimum gap between mouth swaps |
+| `FALLBACK_FLAP_MS` | `templates/overlay.html` | Flap rate when WebAudio is unavailable |
+| `.overlay-row` gap | `static/css/overlay.css` | Spacing in the all-players view |
+| Caption colours and outlines | `static/css/overlay.css` | Legibility over art |
+| Default reported width (500) | `templates/control.html` | Starting point for the source size |
+
+The mouth-tuning three are the strongest case. They're the values most likely to need adjusting for
+a given piece of art, and they're buried in a template a non-developer will never open.
+
+### Where the values live
+
+**An `"appearance"` block in `characters.json`**, rather than a new file. Same lifecycle as the rest
+of it — per-machine, gitignored, written by `/setup` — and a separate file for a dozen numbers earns
+nothing but another thing to lose. It sits alongside `characters` and `slots` as a third top-level
+key, defaults merged underneath, so an absent block behaves exactly as now.
+
+*Not* `config.json`: that's install credentials, set once and never touched again. Appearance is the
+opposite — fiddled with constantly, and useless to hand someone pre-configured.
+
+### Live application, no restart
+
+**This is the part the current structure already pays for.** Every caption size is rendered as a CSS
+custom property, so applying a new value at runtime is:
+
+```js
+document.documentElement.style.setProperty('--character-name-font', '26px');
+refit();
+```
+
+An `appearance_changed` socket event carrying the changed values is the whole mechanism. No restart,
+no browser-source refresh, no cache problem — which matters because tuning is inherently iterative
+and doing it mid-stream is the point. The mouth constants are plain JS variables and update the same
+way.
+
+**One implementation consequence:** `CAPTIONS` is a module-level constant read at import. Live
+editing means it becomes mutable state with a load-and-merge on write, the same shape `characters.py`
+already has for the library. Small, but it's the difference between this being easy and being a
+refactor.
+
+### Font selection
+
+The typeface is the single biggest lever on how the overlay *feels* — a wizard captioned in Roboto
+looks like a web form — and it's currently one hardcoded value in the stylesheet plus a matching
+`<link>` in the template. Selecting one is part of this stage.
+
+**Where the fonts come from is the real decision, and it isn't a style question.** `overlay.html`
+loads Roboto from `fonts.googleapis.com` right now, so the overlay already depends on Google being
+reachable *while streaming*. That's a live dependency on a third party for something on screen. It
+has been fine, but widening it — a picker over dozens of Google families — makes a stream-time
+outage more visible rather than less.
+
+| Source | Cost |
+|---|---|
+| **Google Fonts** | Widest choice, zero setup, but a network dependency at stream time and the family list needs maintaining |
+| **System fonts** | No network at all, but the setup page can't enumerate what's installed — the user types a name and finds out if it worked |
+| **Uploaded font files** | Fully offline and fully theirs, but needs the upload machinery from stage E and a licence question nobody wants to think about |
+
+**Leaning: a short curated list of Google families, downloaded to `static/fonts/` at pick time
+rather than linked.** One fetch when you choose it, served locally forever after, no stream-time
+dependency on anyone. That's more work than a `<link>` but it removes a whole class of live failure,
+which is the same reasoning that took OBS websockets out of the startup path.
+
+**Four things that bite:**
+
+**Weights have to be loaded, not synthesised.** The character name is `font-weight: 700`. A family
+loaded at 400 only will be faux-bolded by the browser, which looks smeared against an outline.
+Whatever the mechanism, it fetches the weights actually used.
+
+**Font metrics change what fits.** Box heights tuned for Roboto can clip descenders in something
+taller. `textfill` handles width automatically, but the boxes don't resize themselves — so changing
+family should prompt a look at the sizes, and the two controls belong on the same page.
+
+**Preview in the actual font, not a dropdown of names.** Choosing type blind from a list is how you
+end up switching six times mid-stream.
+
+**Fallback matters more here than usual.** `font-family: 'Chosen', 'Roboto', sans-serif` — if the
+chosen font fails to load, an overlay in a default sans is survivable; one that renders in a
+serif-by-accident at the wrong size is not.
+
+### Guardrails
+
+**Clamp server-side.** A font of 400 or a threshold of 0 produces an overlay that looks broken, and
+the person who typed it is now debugging live. Every value wants a sane range, enforced where it's
+written rather than trusted from a form.
+
+**A reset-to-defaults button is not optional.** It's the way back when someone has made the text
+invisible and can't read the control that would fix it.
+
+**Warn when a change affects the source size.** Raising the message box height changes how tall the
+browser source must be, and OBS won't resize itself. The panel already reports the size, so the
+warning is really just "look at that number again."
+
+### Staging
+
+**G. Appearance settings.** Independent of C–F — it needs a `/setup` page but not the character
+library's write paths, so it could land before assignment does. `POST /setup/appearance` writes the
+block; `appearance_changed` applies it live.
+
+Worth doing after the launcher (install stage B), which is higher value for the same effort.
+
+### Open
+
+- **Global or per-character?** Everything here is global. For *sizes* that's clearly right —
+  `textfill` already shrinks a long name by itself, so per-character sizes buy little against three
+  more fields each. For **typeface it's less obvious**: a serif for the wizard and something blocky
+  for the goblin is a real thing someone would want, and it's arguably as much a character trait as
+  their voice. The counter is that mixed typefaces across slots usually look like a mistake. Global
+  first, and revisit if it's the first thing anyone asks for.
+- **Colours too, or just sizes?** Colour pickers are more UI than number boxes, and the outlines are
+  tuned for legibility over arbitrary art. Sizes and family first.
+- **How many families in the list?** Long enough to feel like a choice, short enough that someone
+  picks one and moves on. A dozen, chosen for legibility at small sizes over an outline, beats
+  exposing all of Google Fonts.
+
+---
+
 ## Routes
 
 | Route | Purpose |
@@ -262,6 +413,8 @@ single-slot assignment works.
 | `POST /setup/save-default` | Write live voice/style back to the character |
 | `POST /setup/cast/apply` | Apply a cast — assign every slot it names |
 | `POST /setup/cast/save` | Save the current slot arrangement as a named cast |
+| `GET /setup/appearance` | Caption sizes and mouth tuning, applied live |
+| `POST /setup/appearance` | Write the appearance block and broadcast it |
 
 Whether `/setup` is a new template or reuses the orphaned `templates/index.html` is worth deciding
 when building it. `index.html` is 307 lines of the old three-panel markup and jQuery, currently
@@ -282,19 +435,34 @@ adds or removes a class, and the boxes collapse. Since the art is top-anchored, 
 changes nothing visible. Append the file's mtime as a query string (`?v=1722...`) and the swap is
 reliable.
 
+> This applies to **stylesheets too**, which the first version of A2 missed — and the failure is
+> worse than for images. A stale stylesheet doesn't merely look old: the page keeps toggling classes
+> against rules the browser doesn't have, so captions silently stop hiding and new elements render
+> unstyled, with every symptom pointing at the code. `static_v()` in `chat_god_app.py` now stamps
+> stylesheet URLs with their mtime; art uploads at stage E should reuse it.
+
 ---
 
 ## Staging
 
 Each stage leaves the app working.
 
-**A. `characters.json` read path.** Load and merge over `PLAYER_CONFIG`; no UI. Hand-write the file
-to test. Proves the merge and the fallback-to-defaults case.
+**A. `characters.json` read path — done.** `characters.py` loads and merges over `PLAYER_CONFIG`; no
+UI. A missing or malformed file falls back to the pre-library behaviour exactly, and the app says
+which it used at startup. `characters.example.json` is the tracked template.
 
-**A2. Display toggles and the character name.** Overlay renders the character name above the chatter
-name, and honours the three flags. Top-anchored art, collapsing boxes. Control panel gets the three
-switches per player and the reported source size. Independent of art upload, so it can land as soon
-as A does — and the message toggle alone is worth having before any of the rest.
+**A2. Display toggles and the character name — done.** Overlay renders the character name above the
+chatter name and honours the three flags; boxes `display:none` so they collapse rather than leaving
+gaps, and `.overlay-row` is `flex-start` so the art never moves. Control panel has the three switches
+per player and reports the source size with a width input and a copy button.
+
+> Two things worth knowing about how A2 landed. **Box heights live in `characters.py`**, rendered
+> into the overlay as CSS custom properties, because the same numbers drive both the layout and the
+> reported source size — defining them only in the stylesheet would let an edit silently start
+> clipping the message box. And **the size arithmetic is split**: the server decides which boxes
+> count (including that a character with no `display_name` never counts its name box) and sends the
+> art ratio plus the box total; the browser does one multiply. That keeps the fiddly half in one
+> language while still letting the width input update live.
 
 **B. `fetch_voices.py` and `voices.json`.** Replace the hardcoded voice list; filter style dropdowns
 by `style_list`. Independently useful — fixes the silent-style bug on its own, with no setup screen.
@@ -310,6 +478,14 @@ size validation, and a decision on overwrite versus versioned filenames.
 **F. Casts.** Apply and save a named group of slot assignments. Built entirely on D's assign path, so
 it's small once D exists and impossible before it. Independent of art upload, so it can land before
 or after E.
+
+**G. Appearance settings.** Typeface, caption sizes and mouth tuning moved out of source into an
+`appearance` block in `characters.json`, applied live over the socket. Needs a `/setup` page but none
+of the library's write paths, so it's independent of D–F — see *Appearance settings* above.
+
+Font selection is the part with a hidden cost: choosing a family is easy, but doing it without
+adding a stream-time dependency on Google Fonts means downloading the family locally when it's
+picked. Worth splitting if G gets long — sizes and mouth tuning first, typeface second.
 
 B is worth doing first if you want a win before the setup screen exists.
 

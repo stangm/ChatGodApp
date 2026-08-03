@@ -16,9 +16,18 @@ import uuid
 
 from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALOG,
                                   VOICES_SOURCE, styles_for)
+from characters import BOX_SIZES, CAPTION_FONTS, DISPLAY_FLAGS, size_parts
+from characters import load as load_characters
 from config import legacy_in_use, missing_required, set_command, setting, startup_report
+from display_manager import DisplayManager
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
+
+# The character in each slot, resolved once at startup. Runtime assignment is stage
+# D of the character-library design; until then this is fixed for the session, and
+# a missing characters.json means the pre-library behaviour exactly.
+CHARACTERS, CHARACTERS_SOURCE = load_characters()
+display_manager = DisplayManager(CHARACTERS)
 
 # Every setting resolves through config.py: CHATGOD_-prefixed variable, then the
 # legacy unprefixed name, then a built-in default. See that module for why.
@@ -195,13 +204,46 @@ def player_state():
     for number, config in PLAYER_CONFIG.items():
         player = twitchbot.players.get(number) if twitchbot is not None else None
         voice = manager.voices.get(number) if manager is not None else None
+        character = CHARACTERS.get(number)
+        flags = display_manager.get(number) or {}
         state[number] = {
             "tts_enabled": player.tts_enabled if player else True,
             "current_user": (player.current_user if player else None) or "",
             "voice_name": voice["name"] if voice else config["voice_name"],
             "voice_style": voice["style"] if voice else DEFAULT_VOICE_STYLE,
+            "character_name": character.display_name if character else "",
+            # Whether the character name box can be shown at all. A character with
+            # no name would otherwise offer a checkbox that reserves 54px for an
+            # empty box -- so the panel disables it and says why.
+            "has_character_name": bool(character and character.has_name),
+            "size_parts": size_parts(character, flags),
+            **flags,
         }
     return state
+
+
+@app.context_processor
+def _cache_busting():
+    """
+    static_v('css/overlay.css') -> '/static/css/overlay.css?v=<mtime>'
+
+    Browser sources cache stylesheets hard, and OBS keeps that cache across scene
+    switches and app restarts. Editing the CSS therefore appears to do nothing --
+    and the failure is worse than "no styling", because the page's own classes keep
+    toggling against rules the browser doesn't have. Captions stop hiding, new boxes
+    render unstyled, and everything points at the code rather than the cache.
+
+    The file's mtime as a query string means the URL changes exactly when the file
+    does: cached hard until edited, refetched immediately after.
+    """
+    def static_v(filename):
+        url = url_for('static', filename=filename)
+        try:
+            stamp = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+        except OSError:
+            return url
+        return f"{url}?v={stamp}"
+    return {"static_v": static_v}
 
 
 @app.route("/")
@@ -220,6 +262,7 @@ def control():
                            voice_styles=VOICE_STYLE_MAP,
                            voices_source=VOICES_SOURCE,
                            default_style=DEFAULT_VOICE_STYLE,
+                           characters_source=CHARACTERS_SOURCE,
                            state=player_state())
 
 
@@ -239,20 +282,30 @@ def overlay():
     else:
         abort(404, f"Unknown player {requested!r}. Configured: {', '.join(PLAYER_CONFIG)}")
 
-    # Convention: static/characters/player<N>-closed.png and -open.png.
-    # A player entry can override with "image_closed" / "image_open" if the files
-    # live somewhere else under static/.
-    images = {}
+    # Art now comes from the assigned character rather than a filename built from
+    # the slot number. With no characters.json the library synthesizes exactly the
+    # old convention, so this resolves to the same files it always did.
+    #
+    # An empty slot has no art. Both URLs are None and the template draws nothing,
+    # which is what "character": null is for.
+    images, names, flags = {}, {}, {}
     for number in numbers:
-        config = PLAYER_CONFIG[number]
+        character = CHARACTERS.get(number)
         images[number] = {
-            "closed": url_for('static', filename=config.get(
-                "image_closed", f"characters/player{number}-closed.png")),
-            "open": url_for('static', filename=config.get(
-                "image_open", f"characters/player{number}-open.png")),
+            "closed": url_for('static', filename=character.art_closed) if character and character.art_closed else None,
+            "open": url_for('static', filename=character.art_open) if character and character.art_open else None,
         }
+        names[number] = character.display_name if character else ""
+        # The flag alone can't decide: a character with no name would render an
+        # empty box that still occupies space in the browser source.
+        live = display_manager.get(number) or {}
+        flags[number] = dict(live)
+        flags[number]["show_character_name"] = bool(
+            live.get("show_character_name") and character and character.has_name)
 
-    return render_template('overlay.html', numbers=numbers, images=images)
+    return render_template('overlay.html', numbers=numbers, images=images,
+                           character_names=names, flags=flags,
+                           box_sizes=BOX_SIZES, caption_fonts=CAPTION_FONTS)
 
 
 @socketio.event
@@ -342,6 +395,39 @@ def choose_voice_name(value):
             'voice_style': reset_to,
             'available': styles_for(voice_name),
         })
+
+
+@socketio.on("display")
+def toggle_display(value):
+    """
+    Show or hide one caption on one slot, live.
+
+    Broadcast rather than sent to the caller: the overlay is the whole point of the
+    change, and it's a different client. The panel that sent it already updated its
+    own checkbox, and re-applying the same value is a no-op there.
+
+    The new source size rides along, because toggling a caption changes how tall the
+    browser source needs to be and that number is only useful at the moment it
+    changes.
+    """
+    player = _player_from(value)
+    if player is None:
+        return
+    if not display_manager.update(player.number, value.get('flag'), value.get('checked')):
+        return
+
+    character = CHARACTERS.get(player.number)
+    flags = display_manager.get(player.number)
+    socketio.emit('display_changed', {
+        'user_number': player.number,
+        # What the overlay should actually draw, which isn't the raw flag: a
+        # character with no name never shows the character-name box.
+        'show_character_name': bool(flags.get('show_character_name')
+                                    and character and character.has_name),
+        'show_chatter_name': flags.get('show_chatter_name'),
+        'show_message': flags.get('show_message'),
+        'size_parts': size_parts(character, flags),
+    })
 
 
 @socketio.on("voicestyle")
@@ -495,7 +581,18 @@ if __name__=='__main__':
               "  If you set them recently, reopen the terminal -- environment variables\n"
               "  don't reach shells that were already open.")
 
-    tts_manager = TTSManager()
+    if CHARACTERS_SOURCE == "file":
+        print("\nCharacters: read from characters.json")
+        for number, character in CHARACTERS.items():
+            label = character.display_name or character.id or "(empty)"
+            print(f"  Player {number}: {label}")
+    else:
+        print("\nCharacters: none configured -- using players.py and the "
+              "characters/player<N>-*.png convention.\n"
+              "  Copy characters.example.json to characters.json to name your "
+              "characters and control what shows on stream.")
+
+    tts_manager = TTSManager(CHARACTERS)
     tts_manager.play_startup_chime()
     speech_worker = SpeechWorker(tts_manager)
 
