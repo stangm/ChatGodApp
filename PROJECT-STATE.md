@@ -46,38 +46,31 @@ switching to a voice with no styles (all 15 `en-AU` voices have none, which is t
 
 `main` is at `492d30c`, with the live-state fix and the `config.py` refactor merged and tested.
 
-**The character library work is uncommitted in the working tree, directly on `main`** — three new
-files (`characters.py`, `display_manager.py`, `characters.example.json`) plus edits to
-`chat_god_app.py`, both templates, both stylesheets, `voices_manager.py`, `.gitignore` and the docs.
-Mark intends to commit it; a branch would be tidier than committing straight to `main`.
+`feature/character-library` is at `a95243c` and pushed — the whole library, the display toggles, the
+caption layout and the stylesheet cache-buster in one commit. **Not yet merged to `main`.**
 
 > **Commits and pushes have to be run by Mark**, not from the sandbox — see the git/OneDrive lock
 > problem below.
 
 ### Character library — stages A and A2 are built, and PARTLY VERIFIED
 
-**Two symptoms were reported and are not confirmed fixed.** Ask before assuming this works:
+**Confirmed working on stream:** the character name renders, and all three caption toggles take
+effect live. The earlier symptoms were stale cached CSS in the browser source, now fixed by
+`static_v()` stamping stylesheet URLs with the file's mtime.
 
-1. The character name didn't appear on the overlay.
-2. The chatter-name and message checkboxes had no visible effect.
+**Not yet confirmed:** the caption layout change that came afterwards — both names moved over the
+art, sizes reduced, and every size consolidated into `CAPTIONS`. Specifically unverified:
 
-The diagnosis was **stale cached CSS in the browser source** — the page kept toggling classes against
-a stylesheet the browser had cached from before the new rules existed, which produces exactly both
-symptoms while the server behaves correctly. The fix was a `static_v()` context processor appending
-each stylesheet's mtime to its URL. **Mark stepped away before confirming it.**
+- Names sit correctly over the lower part of the art and stay legible
+- They **don't vanish while the mouth is open** — the captions share a stacking context with the
+  open-mouth image, so the `z-index` on `.art-captions` is load-bearing. This would show up as an
+  intermittent flicker only during speech, which is nasty to diagnose after the fact
+- Reported source size is stable when toggling either name, and only changes with the message
 
-If the symptoms persist after a restart and a hard refresh, the cache theory is wrong and the two
-split apart:
+Also never run against a live app: reloading the panel and the browser source to confirm toggles
+persist, slot 2 showing its character name alone, and the width input recalculating.
 
-- *Name still missing* — check whether `<span class="character-name">` is in the DOM (right-click the
-  source → Interact). Present but invisible points at `textfill` shrinking it to `minFontPixels`.
-  Absent means the server didn't see `characters.json`, which happens if the app was already running
-  when the file was created — the library loads once at import.
-- *Toggles still inert* — watch the server console. `Player 1: show_message is now False` means the
-  socket round trip is fine and it's purely overlay CSS. Silence means the panel isn't reaching the
-  server.
-
-What **was** verified, by direct test rather than by running the app: all four `characters.json`
+What **was** verified by direct test rather than by running the app: all four `characters.json`
 fallback paths, the size arithmetic against the real art, both templates rendering, the control
 panel's JavaScript parsing, and that every socket event has a matching sender and listener.
 
@@ -178,10 +171,17 @@ old unprefixed names still work; startup names any it falls back to.
 
 ## Things that will waste your time
 
-**Git can't be driven from the sandbox.** The OneDrive mount lets git *create* `.git/index.lock` but
-not remove it, so every commit and push has to be run by Mark in PowerShell. A failed attempt leaves
-a stale lock that blocks his next command too — clear it with `Remove-Item .git\index.lock`. Write
-the files, hand over the commit command.
+**Git can't be driven from the sandbox, and reads need `--no-optional-locks`.** The OneDrive mount
+lets git *create* `.git/index.lock` but not remove it. Plain `git status` writes — it refreshes the
+index — so even a read-only-looking check leaves a stale lock that blocks Mark's next command.
+
+- Reads: `git --no-optional-locks status -s`, `git log`, `git diff`. Verified not to create a lock.
+- Writes: never from the sandbox. Write the files, hand Mark the commit command.
+- Stale lock: `Remove-Item .git\index.lock` is safe whenever no git command is actually running.
+
+Moving the repo out of OneDrive would be better hygiene generally — a `.git` directory in a synced
+folder invites locking and sync conflicts in the object store — but it may not change the sandbox
+unlink behaviour, which is a property of the mount.
 
 **`.venv/` lives inside the repo.** It's gitignored, but recursive greps hit thousands of dependency
 files. Exclude it.
