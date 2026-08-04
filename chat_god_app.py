@@ -483,28 +483,95 @@ def control():
                            state=player_state())
 
 
+# ---------------------------------------------------------------------------
+# Setup: three pages, because they're three different jobs
+#
+# The first version put slots and every character on one page with each character
+# fully expanded. Fine at three characters, unusable at fifteen -- and it failed in a
+# particular way: assigning a character is something you do often and quickly, while
+# editing one is rare and detailed, so the rare task's bulk sat permanently in front
+# of the frequent one and grew every time a character was added.
+#
+#   /setup                  slots. Bounded by player count, so it fits one screen
+#                           forever no matter how large the library gets.
+#   /setup/characters       the library, as a grid of art. Characters are pictures;
+#                           thumbnails scan faster than a list of ids.
+#   /setup/character/<id>   one character, alone, with room for everything.
+#
+# A page per character rather than an accordion or a modal, because both of those
+# need state management that doesn't exist here -- this is a link and a form post,
+# which is what the rest of setup already is.
+# ---------------------------------------------------------------------------
+
+
 @app.route("/setup")
 def setup():
     """
-    The character library: create, edit, assign. Not for stream.
+    Which character is in which slot. Not for stream.
 
-    Deliberately separate from the control panel. The panel is what you touch while
-    live, and it's already dense; this is what you touch between streams, and it
-    contains the one control -- delete -- that you'd hate to hit by accident with an
-    audience watching.
+    Deliberately separate from the control panel: the panel is what you touch while
+    live and it's already dense, this is what you touch between streams.
     """
     return render_template('setup.html',
                            players=PLAYER_CONFIG,
                            characters=library.characters,
                            slots=library.slots,
                            resolved=CHARACTERS,
-                           voices=VOICE_OPTIONS,
+                           characters_source=CHARACTERS_SOURCE,
+                           live=(twitchbot.tts_manager.voices if twitchbot else {}))
+
+
+@app.route("/setup/characters")
+def setup_characters():
+    """The library as a grid: art, name, and where each one is currently assigned."""
+    assigned = {}
+    for number, char_id in library.slots.items():
+        if char_id:
+            assigned.setdefault(char_id, []).append(number)
+
+    return render_template('characters.html',
+                           characters=library.characters,
+                           assigned=assigned,
+                           art_url=art_url,
+                           characters_source=CHARACTERS_SOURCE)
+
+
+@app.route("/setup/character/<char_id>")
+def setup_character_page(char_id):
+    """One character's editor, alone on a page so it can show everything at once."""
+    entry = library.characters.get(char_id)
+    if entry is None:
+        return _setup_done(False, f"There's no character called {char_id!r}.",
+                           endpoint="setup_characters")
+
+    in_slots = [n for n, c in library.slots.items() if c == char_id]
+    return render_template('character.html',
+                           char_id=char_id,
+                           entry=entry,
+                           in_slots=in_slots,
+                           art_url=art_url,
                            voice_groups=VOICE_GROUPS,
                            styles=STYLE_OPTIONS,
                            voice_styles=VOICE_STYLE_MAP,
-                           display_flags=DISPLAY_FLAGS,
-                           characters_source=CHARACTERS_SOURCE,
-                           live=(twitchbot.tts_manager.voices if twitchbot else {}))
+                           display_flags=DISPLAY_FLAGS)
+
+
+@app.route("/setup/character/new", methods=["POST"])
+def setup_character_new():
+    """
+    Create a blank character and go straight to its editor.
+
+    Create and edit are one form rather than two. The previous page had a separate
+    "New character" form duplicating most of the editor's fields, and two forms with
+    overlapping fields drift -- which is exactly how the style dropdown ended up
+    disagreeing with the control panel for weeks. So creating asks only for the id,
+    and everything else is the editor.
+    """
+    char_id = (request.form.get("id") or "").strip()
+    ok, message = library.upsert(char_id, {})
+    if not ok:
+        return _setup_done(False, message, endpoint="setup_characters")
+    return redirect(url_for("setup_character_page", char_id=char_id))
 
 
 @app.route("/setup/assign", methods=["POST"])
@@ -539,7 +606,7 @@ def setup_character():
         for number, assigned in library.slots.items():
             if assigned == char_id:
                 apply_assignment(number)
-    return _setup_done(ok, message)
+    return _setup_done(ok, message, endpoint="setup_character_page", char_id=char_id)
 
 
 @app.route("/setup/upload", methods=["POST"])
@@ -564,7 +631,8 @@ def setup_upload():
     """
     char_id = (request.form.get("id") or "").strip()
     if char_id not in library.characters:
-        return _setup_done(False, f"There's no character called {char_id!r}.")
+        return _setup_done(False, f"There's no character called {char_id!r}.",
+                           endpoint="setup_characters")
 
     uploads = {}
     for which in ("closed", "open"):
@@ -573,7 +641,8 @@ def setup_upload():
             uploads[which] = item.read()
 
     if not uploads:
-        return _setup_done(False, "Pick at least one image first.")
+        return _setup_done(False, "Pick at least one image first.",
+                           endpoint="setup_character_page", char_id=char_id)
 
     # Establish the size to match against: the other upload if there is one,
     # otherwise whatever is already on disk for this character.
@@ -590,12 +659,14 @@ def setup_upload():
     for which, data in uploads.items():
         ok, message, relative = characters.save_art(char_id, which, data, reference)
         if not ok:
-            return _setup_done(False, f"{which} image: {message}")
+            return _setup_done(False, f"{which} image: {message}",
+                               endpoint="setup_character_page", char_id=char_id)
         fields[f"art_{which}"] = relative
 
     ok, message = library.upsert(char_id, fields)
     if not ok:
-        return _setup_done(False, message)
+        return _setup_done(False, message,
+                           endpoint="setup_character_page", char_id=char_id)
 
     for number, assigned in library.slots.items():
         if assigned == char_id:
@@ -603,14 +674,21 @@ def setup_upload():
 
     size = reference or next(iter(sizes.values()))
     note = f" ({size[0]}x{size[1]})" if size else ""
-    return _setup_done(True, f"Art updated for {char_id}{note}. "
-                             "Check the browser source size on the control panel.")
+    return _setup_done(True, f"Art updated{note}. Check the browser source size on "
+                             "the control panel.",
+                       endpoint="setup_character_page", char_id=char_id)
 
 
 @app.route("/setup/delete", methods=["POST"])
 def setup_delete():
-    ok, message = library.delete(request.form.get("id", ""))
-    return _setup_done(ok, message)
+    char_id = request.form.get("id", "")
+    ok, message = library.delete(char_id)
+    # On success the editor page is gone, so the library is the only sensible
+    # destination. On failure -- the in-use guard -- stay where the button was.
+    if ok:
+        return _setup_done(True, message, endpoint="setup_characters")
+    return _setup_done(False, message,
+                       endpoint="setup_character_page", char_id=char_id)
 
 
 @app.route("/setup/save-default", methods=["POST"])
@@ -639,9 +717,16 @@ def setup_save_default():
                            f"now defaults to {voice['name']}." if ok else message)
 
 
-def _setup_done(ok, message):
-    """Back to /setup with a one-line result, since these are plain form posts."""
-    return redirect(url_for("setup", ok="1" if ok else "0", msg=message))
+def _setup_done(ok, message, endpoint="setup", **values):
+    """
+    Back to whichever setup page the form was on, with a one-line result.
+
+    These are plain form posts with no JavaScript, so the result has to survive a
+    redirect -- it rides in the query string. Taking the destination as an argument
+    is what lets an edit return to the character you were editing rather than
+    bouncing you to the slots page and making you find your way back.
+    """
+    return redirect(url_for(endpoint, ok="1" if ok else "0", msg=message, **values))
 
 
 @app.route("/overlay")

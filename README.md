@@ -285,9 +285,9 @@ shows "this voice has no speaking styles" rather than offering options that won'
 Add `player4-closed.png` / `player4-open.png`, restart, and add a browser source pointing at
 `?player=4`. Nothing else needs to change.
 
-**Naming your characters** — open **<http://127.0.0.1:5000/setup>**, or the *characters* link in the
-control panel header. Create a character, upload its two PNGs, give it a voice, and assign it to a
-player slot. The art swaps on stream immediately — no restart, no browser-source refresh.
+**Naming your characters** — open **<http://127.0.0.1:5000/setup/characters>**, or the *characters*
+link in the control panel header. Create a character, upload its two PNGs and give it a voice, then
+assign it to a slot on **<http://127.0.0.1:5000/setup>**. The art swaps on stream immediately — no restart, no browser-source refresh.
 
 Uploads are checked before anything is written: both frames must be PNG, under 8MB, and **the same
 dimensions as each other**. Mismatched frames make the character jump every time it speaks, which on
@@ -408,7 +408,9 @@ character once you have a `characters.json`.
 | `voices.default.json` | The voice catalog shipped with the repo — a real fetch, all English locales, free-tier voices. Used when you haven't run `fetch_voices.py`. Your own `voices.json` overrides it and is gitignored |
 | `templates/overlay.html` | On-stream graphic, lip sync |
 | `templates/control.html` | Operator dashboard |
-| `templates/setup.html` | Character library — create, edit, upload art, assign, delete |
+| `templates/setup.html` | Slot assignments |
+| `templates/characters.html` | Character library, as a grid of art |
+| `templates/character.html` | One character's editor — voice, captions, art upload, delete |
 | `audio_player.py`, `obs_websockets.py` | Legacy server-side playback and OBS filter toggling, kept for the startup chime and test scripts. Off by default (`OBS_WEBSOCKETS_ENABLED` in `players.py`) |
 | `tts_test.py` | Synthesis and local playback without Twitch or a browser — checks voices and Azure credentials on their own |
 | `voice_test.py` | Walks the voice and style lists, so you can hear combinations before assigning them |

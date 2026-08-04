@@ -1,0 +1,76 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Chat God &mdash; Characters</title>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ static_v('css/control.css') }}">
+</head>
+<body>
+
+    <header>
+        <h1>Chat God &mdash; Characters</h1>
+        <div class="status">
+            <a href="/setup">slots</a> &middot;
+            <a href="/control">control panel</a>
+        </div>
+    </header>
+
+    {% if request.args.get('msg') %}
+    <p class="hint {{ 'ok-note' if request.args.get('ok') == '1' else 'warn' }}">
+        {{ request.args.get('msg') }}
+    </p>
+    {% endif %}
+
+    <p class="hint">
+        Click a character to edit its art, voice and what shows on stream.
+        {% if characters %}Badges mark the ones currently in a slot.{% endif %}
+    </p>
+
+    <!-- A grid of art rather than a list of names: characters are pictures, and you
+         find the goblin faster by looking than by reading ids. Each card carries only
+         what's needed to recognise and locate one -- everything else is the editor. -->
+    <div class="grid">
+        {% for char_id, entry in characters.items() %}
+        <a class="card" href="/setup/character/{{ char_id }}">
+            <div class="card-art">
+                {% if entry.art_closed %}
+                <img src="{{ art_url(entry.art_closed) }}" alt="">
+                {% else %}
+                <span class="card-noart">no art</span>
+                {% endif %}
+            </div>
+            <div class="card-name">{{ entry.display_name or char_id }}</div>
+            <div class="card-meta">
+                {% if assigned.get(char_id) %}
+                <span class="badge">player {{ assigned[char_id] | join(', ') }}</span>
+                {% else %}
+                <span class="badge idle">not assigned</span>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+
+        <!-- Creating asks for the id and nothing else, then drops you into the editor.
+             One form for create and edit rather than two with overlapping fields --
+             two is how the style dropdown drifted out of sync with the control panel. -->
+        <form class="card new" method="post" action="/setup/character/new">
+            <div class="card-art"><span class="card-noart">+</span></div>
+            <label class="field">
+                <span class="label">New character id</span>
+                <input type="text" name="id" placeholder="wizard" required
+                       pattern="[A-Za-z0-9][A-Za-z0-9_-]*"
+                       title="Letters, numbers, hyphens and underscores. Must start with a letter or number.">
+            </label>
+            <p class="field-note">
+                Short and lowercase. Internal only &mdash; never shown on stream, and keeping it
+                stable means renaming the character on screen doesn't break the slots pointing at it.
+            </p>
+            <button type="submit">Create</button>
+        </form>
+    </div>
+
+</body>
+</html>

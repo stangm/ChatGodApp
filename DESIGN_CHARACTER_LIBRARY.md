@@ -1,7 +1,6 @@
 # Design: character library and setup screen
 
-**Status: stages A, A2, B, C, D and E are built.** Remaining: F (casts), G (appearance) and H
-(splitting `/setup` up, which should come first). The
+**Status: stages A, A2, B, C, D, E and H are built.** Remaining: F (casts) and G (appearance). The
 staging section at the bottom marks each one, and the notes under the built stages record what
 changed during implementation — several decisions here were revised once they met reality, and those
 revisions are marked inline rather than by rewriting the original reasoning.
@@ -608,11 +607,13 @@ Font selection is the part with a hidden cost: choosing a family is easy, but do
 adding a stream-time dependency on Google Fonts means downloading the family locally when it's
 picked. Worth splitting if G gets long — sizes and mouth tuning first, typeface second.
 
-**H. Split `/setup` into slots, library and per-character editor.** See *Splitting `/setup` up*
-above. Independent of everything else and worth doing **before** F or G, since both of those want to
-add sections to a page that's already too long — and each one added first makes the split more work.
-It's also mostly template surgery: the write endpoints don't change, only which page they're reached
-from.
+**H. Split `/setup` into slots, library and per-character editor — done.** Three pages as described
+in *Splitting `/setup` up*. The write endpoints kept their URLs; what changed is that each one now
+redirects back to the page it was used from rather than always landing on `/setup`, so editing a
+character returns you to that character.
+
+> Create and edit merged as planned: `POST /setup/character/new` takes only an id, creates a blank
+> entry and redirects into the editor. The duplicate "new character" form is gone.
 
 B is worth doing first if you want a win before the setup screen exists.
 

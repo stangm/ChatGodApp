@@ -100,7 +100,106 @@ button.danger {
 
 button.danger:hover { color: var(--bg); background: var(--bad); }
 
-.new-character { border-style: dashed; }
+/* ---- character grid ---------------------------------------------------------
+
+   Art-forward on purpose: the fastest way to find a character is to look at it.
+   Cards carry only what's needed to recognise one and see where it is; everything
+   else lives in the editor, which is why this stays scannable as the library grows.
+*/
+
+.grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.card {
+    display: block;
+    width: 168px;
+    padding: 12px;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    text-decoration: none;
+    color: var(--text);
+}
+
+a.card:hover { border-color: var(--accent); }
+
+.card.new { border-style: dashed; width: 200px; }
+
+.card-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 120px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    /* Checkerboard, because the art is transparent PNG and a dark character on a
+       dark panel is indistinguishable from a missing file. */
+    background-color: #6b6b78;
+    background-image:
+        linear-gradient(45deg, #4a4a55 25%, transparent 25%, transparent 75%, #4a4a55 75%),
+        linear-gradient(45deg, #4a4a55 25%, transparent 25%, transparent 75%, #4a4a55 75%);
+    background-size: 14px 14px;
+    background-position: 0 0, 7px 7px;
+}
+
+.card-art img { max-width: 100%; max-height: 120px; }
+
+.card-noart { font-size: 12px; color: #2b2b33; }
+
+.card-name { font-size: 14px; margin-bottom: 6px; word-break: break-word; }
+
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-radius: 10px;
+    color: var(--bg);
+    background: var(--ok);
+}
+
+.badge.idle { color: var(--muted); background: transparent; border: 1px solid var(--panel-edge); }
+
+/* ---- character editor ------------------------------------------------------- */
+
+.editor { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+
+.panel.wide { width: 340px; }
+
+.art-frames { display: flex; gap: 10px; margin-bottom: 14px; }
+.art-frames figure { margin: 0; flex: 1; }
+.art-frames figcaption {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-top: 4px;
+    text-align: center;
+}
+
+.art-frame {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 130px;
+    border-radius: 6px;
+    background-color: #6b6b78;
+    background-image:
+        linear-gradient(45deg, #4a4a55 25%, transparent 25%, transparent 75%, #4a4a55 75%),
+        linear-gradient(45deg, #4a4a55 25%, transparent 25%, transparent 75%, #4a4a55 75%);
+    background-size: 14px 14px;
+    background-position: 0 0, 7px 7px;
+}
+
+.art-frame img { max-width: 100%; max-height: 130px; }
+
+/* Set apart rather than tucked among the save buttons -- it's the one control on
+   these pages you'd hate to hit by accident. */
+.danger-zone { border-color: color-mix(in srgb, var(--bad) 40%, var(--panel-edge)); }
 
 .art {
     margin-top: 14px;

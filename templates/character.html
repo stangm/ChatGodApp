@@ -1,0 +1,177 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Chat God &mdash; {{ entry.display_name or char_id }}</title>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ static_v('css/control.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+    <script src="{{ static_v('js/voice-styles.js') }}"></script>
+
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function() {
+            // Same map and same narrowing the control panel uses, so the two screens
+            // can't disagree about what a voice can do.
+            VoiceStyles.init({{ (voice_styles or {}) | tojson }});
+
+            function refresh(preferred) {
+                VoiceStyles.refresh({
+                    select: '#default-style',
+                    note: '#style-note',
+                    voiceName: $('#default-voice').val(),
+                    preferred: preferred
+                });
+            }
+
+            // Narrow on load, keeping the stored style if it's valid. An invalid one
+            // shows the note -- which is how a hand-edited characters.json reveals a
+            // style Azure was quietly ignoring.
+            refresh($('#default-style').val());
+            $('#default-voice').on('change', function() { refresh(); });
+        });
+    </script>
+</head>
+<body>
+
+    <header>
+        <h1>{{ entry.display_name or char_id }}</h1>
+        <div class="status">
+            <a href="/setup/characters">&larr; all characters</a> &middot;
+            <a href="/setup">slots</a>
+        </div>
+    </header>
+
+    {% if request.args.get('msg') %}
+    <p class="hint {{ 'ok-note' if request.args.get('ok') == '1' else 'warn' }}">
+        {{ request.args.get('msg') }}
+    </p>
+    {% endif %}
+
+    {% if in_slots %}
+    <p class="hint ok-note">
+        Currently in player {{ in_slots | join(', ') }}. Changes here apply on stream immediately.
+    </p>
+    {% endif %}
+
+    <div class="editor">
+
+        <!-- ------------------------------------------------------------- art -->
+        <section class="panel wide">
+            <div class="panel-head"><h2>Art</h2></div>
+
+            <div class="art-frames">
+                <figure>
+                    <div class="art-frame">
+                        {% if entry.art_closed %}
+                        <img src="{{ art_url(entry.art_closed) }}" alt="">
+                        {% else %}<span class="card-noart">none</span>{% endif %}
+                    </div>
+                    <figcaption>mouth closed</figcaption>
+                </figure>
+                <figure>
+                    <div class="art-frame">
+                        {% if entry.art_open %}
+                        <img src="{{ art_url(entry.art_open) }}" alt="">
+                        {% else %}<span class="card-noart">none</span>{% endif %}
+                    </div>
+                    <figcaption>mouth open</figcaption>
+                </figure>
+            </div>
+
+            <form method="post" action="/setup/upload" enctype="multipart/form-data">
+                <input type="hidden" name="id" value="{{ char_id }}">
+                <label class="field">
+                    <span class="label">Replace mouth closed</span>
+                    <input type="file" name="art_closed" accept="image/png">
+                </label>
+                <label class="field">
+                    <span class="label">Replace mouth open</span>
+                    <input type="file" name="art_open" accept="image/png">
+                </label>
+                <p class="field-note">
+                    PNG, both the same size, under 8MB. Upload one or both &mdash; a single upload is
+                    checked against the frame already here. Changing art can change the browser
+                    source height, so re-check the size on the control panel afterwards.
+                </p>
+                <button type="submit" class="secondary">Upload</button>
+            </form>
+        </section>
+
+        <!-- --------------------------------------------------------- details -->
+        <section class="panel wide">
+            <form method="post" action="/setup/character">
+                <input type="hidden" name="id" value="{{ char_id }}">
+
+                <div class="panel-head">
+                    <h2>Details</h2>
+                    <code class="keyphrase">{{ char_id }}</code>
+                </div>
+
+                <label class="field">
+                    <span class="label">Name on stream</span>
+                    <input type="text" name="display_name" value="{{ entry.display_name or '' }}"
+                           placeholder="leave empty to show no name">
+                </label>
+
+                <label class="field">
+                    <span class="label">Default voice</span>
+                    <select name="default_voice" id="default-voice">
+                        <option value="">(use players.py)</option>
+                        {% for locale_label, group in voice_groups %}
+                        <optgroup label="{{ locale_label }}">
+                            {% for value, display in group %}
+                            <option value="{{ value }}" {% if value == entry.default_voice %}selected{% endif %}>{{ display }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="label">Default style</span>
+                    <select name="default_style" id="default-style">
+                        {% for value in styles %}
+                        <option value="{{ value }}" {% if value == entry.get('default_style', 'random') %}selected{% endif %}>{{ value }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <div class="style-note" id="style-note"></div>
+
+                <div class="shows">
+                    <span class="label">Show on stream</span>
+                    {% for flag in display_flags %}
+                    <label class="toggle">
+                        <input type="checkbox" name="{{ flag }}" {% if entry.get(flag, True) %}checked{% endif %}>
+                        <span>{{ flag | replace('show_', '') | replace('_', ' ') }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+
+                <button type="submit">Save</button>
+            </form>
+        </section>
+
+        <!-- -------------------------------------------------------- deletion -->
+        <section class="panel wide danger-zone">
+            <div class="panel-head"><h2>Delete</h2></div>
+            <p class="field-note">
+                Removes this character from the library. <strong>The PNG files stay on disk</strong>,
+                so re-adding is pointing at the same files again.
+                {% if in_slots %}
+                It's in player {{ in_slots | join(', ') }}, so this will be refused until you unassign
+                it &mdash; a slot going empty mid-stream shouldn't be one click away.
+                {% endif %}
+            </p>
+            <form method="post" action="/setup/delete"
+                  onsubmit="return confirm('Delete {{ entry.display_name or char_id }}? The art files stay on disk.');">
+                <input type="hidden" name="id" value="{{ char_id }}">
+                <button type="submit" class="danger">Delete {{ entry.display_name or char_id }}</button>
+            </form>
+        </section>
+
+    </div>
+
+</body>
+</html>

@@ -101,13 +101,20 @@ frame is written, because mismatched dimensions make the character jump when it 
 one frame would create exactly that state. Art overwrites in place, which only works because
 `art_url()` cache-busts on mtime.
 
-Stages F (casts), G (appearance) and H (splitting `/setup` up) are not built.
+**Stage H is built** — `/setup` is now three pages, which is what keeps it usable as the library
+grows:
 
-**H should come before F and G.** `/setup` currently puts slots and every character on one page with
-each character fully expanded — fine at three, unusable at fifteen, and the frequently-used slots
-section gets pushed further down every character you add. The plan is `/setup` for slots only,
-`/setup/characters` as a grid of art, and `/setup/character/<id>` as a full-page editor. Both F and
-G want to add sections to that page, so each one built first makes the split more work.
+| Page | Holds |
+|---|---|
+| `/setup` | Slots. Bounded by player count, so it fits one screen however many characters exist |
+| `/setup/characters` | The library as a grid of art, with badges for what's in a slot |
+| `/setup/character/<id>` | One character's editor, alone on a page |
+
+Create and edit are one path now: *New character* takes an id, creates a blank entry and redirects
+into the editor. Two forms with overlapping fields is what let the style dropdown drift.
+
+Stages F (casts) and G (appearance) are not built. Both wanted this split first, since both add
+sections to these pages.
 
 ### Not done
 
@@ -126,9 +133,7 @@ G want to add sections to that page, so each one built first makes the split mor
    family locally when it's picked.
 4. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
    the **rolling log file**, then E onwards (the wizard) which only pays off at more than one user.
-5. **`templates/index.html` is still orphaned.** 307 lines of superseded markup that no route
-   renders. `/setup` was written fresh rather than repurposing it, so this is now just dead code —
-   delete it.
+5. ~~`templates/index.html` orphaned~~ — deleted.
 
 ---
 
