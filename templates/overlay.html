@@ -103,6 +103,15 @@
                 refit();
             });
 
+            // A slot went in or out of the show. The whole thing hides, art and
+            // captions together -- a slot that's out shouldn't leave a name floating
+            // where a character used to be.
+            socket.on('slot_active', function(msg) {
+                if (PLAYERS.indexOf(msg.user_number) === -1) return;
+                $('#player-slot-' + msg.user_number).toggleClass('slot-off', !msg.active);
+                refit();
+            });
+
             // A character was assigned or edited. Swap the art and captions in
             // place: no browser-source refresh, no OBS interaction, nothing for the
             // streamer to do. The URLs arrive already cache-busted, which is what
@@ -258,7 +267,7 @@
 
     <div class="overlay-row">
         {% for n in numbers %}
-        <div class="player-slot{% if not flags[n].show_character_name %} hide-character-name{% endif %}{% if not flags[n].show_chatter_name %} hide-chatter-name{% endif %}{% if not flags[n].show_message %} hide-message{% endif %}"
+        <div class="player-slot{% if not active[n] %} slot-off{% endif %}{% if not flags[n].show_character_name %} hide-character-name{% endif %}{% if not flags[n].show_chatter_name %} hide-chatter-name{% endif %}{% if not flags[n].show_message %} hide-message{% endif %}"
              id="player-slot-{{ n }}">
 
             {% if images[n].closed %}

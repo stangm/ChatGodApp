@@ -30,6 +30,14 @@
                 socket.emit('tts', { user_number: player(this), checked: $(this).prop('checked') });
             });
 
+            $('input.active-checkbox').on('change', function() {
+                var number = player(this), on = $(this).prop('checked');
+                socket.emit('slot_active', { user_number: number, checked: on });
+                // Dim immediately rather than waiting for the round trip -- this is
+                // the one control where the panel should visibly agree at once.
+                $('[data-player="' + number + '"]').toggleClass('panel-off', !on);
+            });
+
             // ---- what shows on stream, and how big the source has to be ----
 
             // Per player: {art_w, art_h, boxes}, or null when the art size couldn't
@@ -140,6 +148,8 @@
             // thread was ready, and a reconnect after the server restarted.
             socket.on('state', function(state) {
                 $.each(state, function(number, live) {
+                    $('#active-' + number).prop('checked', live.active);
+                    $('[data-player="' + number + '"]').toggleClass('panel-off', !live.active);
                     $('#tts-' + number).prop('checked', live.tts_enabled);
                     $('#assigned-' + number).text(live.current_user || '(nobody)');
                     $('#voicename-' + number).val(live.voice_name);
@@ -262,12 +272,21 @@
     <div class="panels">
         {% for number, config in players.items() %}
         {% set live = state[number] %}
-        <section class="panel" data-player="{{ number }}">
+        <section class="panel{% if not live.active %} panel-off{% endif %}" data-player="{{ number }}">
 
             <div class="panel-head">
                 <h2>Player {{ number }}</h2>
                 <code class="keyphrase">{{ config.keyphrase }}</code>
             </div>
+
+            <!-- The out-of-the-show switch. Sits at the top because everything below
+                 it is inert while it's off, and reads as a heading for the panel
+                 rather than as one more option among the others. -->
+            <label class="toggle in-show">
+                <input type="checkbox" class="active-checkbox" id="active-{{ number }}"
+                       {% if live.active %}checked{% endif %}>
+                <span>In the show</span>
+            </label>
 
             <div class="assigned">
                 <span class="label">assigned</span>

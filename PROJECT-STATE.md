@@ -116,6 +116,28 @@ into the editor. Two forms with overlapping fields is what let the style dropdow
 Stages F (casts) and G (appearance) are not built. Both wanted this split first, since both add
 sections to these pages.
 
+### Slot enable/disable (**untested**)
+
+`Player.active` and an *In the show* switch at the top of each control panel. Off means: overlay
+draws nothing, no synthesis, keyphrase ignored, Pick Random and Choose user refused. It exists so a
+six-player OBS scene can be run with four without the app pooling chatters into invisible slots or
+spending quota on them.
+
+Three distinctions worth keeping straight — they look similar and aren't:
+
+| Control | Effect |
+|---|---|
+| *In the show* off | Out entirely — no art, no voice, no pool joins |
+| TTS unticked | Silent, but still on screen and still pooling |
+| Character set to *(empty)* | Invisible, but still speaks |
+
+Disabling **keeps the pool**, so a short toggle doesn't make everyone rejoin. The pool self-empties
+after 450s of a chatter being quiet anyway, so keeping it only matters for exactly the short-toggle
+case where clearing would annoy people most.
+
+**Layout stays an OBS concern.** Fixed browser sources can't re-centre when two go dark, so the
+answer for a 6-vs-4 night is two OBS scenes, not app-side reflow.
+
 ### Not done
 
 1. **Nothing survives a restart.** Voice, style, TTS toggle, caption toggles and assignments are all
@@ -131,9 +153,14 @@ sections to these pages.
    than it sounds because every caption size is already a CSS custom property. Font selection is the
    expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
    family locally when it's picked.
-4. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
+4. **A global speech gate** — one speaker at a time. Playback is per-overlay-page, so two slots can
+   already talk over each other; at six that would be constant. Designed but not built, and the
+   failure mode matters more than the feature: a gate that stalls mutes the whole show, so it needs
+   a duration-based timeout rather than relying on pages reporting in. Also note `AUDIO_CACHE_SIZE`
+   is 50 — a backlog longer than that would have its wavs deleted before playing.
+5. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
    the **rolling log file**, then E onwards (the wizard) which only pays off at more than one user.
-5. ~~`templates/index.html` orphaned~~ — deleted.
+6. ~~`templates/index.html` orphaned~~ — deleted.
 
 ---
 

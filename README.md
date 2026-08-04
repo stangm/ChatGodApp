@@ -228,6 +228,15 @@ replaces a diagnostic conversation.
 From the control panel you can assign a chatter to each player slot, pick voices and styles, and
 toggle TTS per player, all live.
 
+**"In the show"** takes a slot out entirely: nothing drawn, nothing spoken, its keyphrase ignored,
+and no Azure characters spent on it. That's what lets you build one OBS scene for six players and
+run a four-player night without the app queueing chatters for characters nobody can see. Layout
+stays an OBS job — a second scene — because fixed browser sources can't re-centre when two go dark.
+
+Switching a slot off **keeps its pool**, so re-enabling doesn't make everyone type the keyphrase
+again. It's distinct from unticking TTS (silent but still on screen) and from an empty character
+(invisible but still speaking).
+
 **Smoke test:**
 
 1. Type `!player1` in your own chat.
@@ -377,7 +386,8 @@ character once you have a `characters.json`.
 | No `Logged in as` line | Token missing or expired, or the terminal was open before you set the env var |
 | Bot connects but ignores you | `CHATGOD_TWITCH_CHANNEL` is wrong or wrong case |
 | "Azure failed, using gTTS instead" | Bad `CHATGOD_AZURE_KEY`, or region as "East US" instead of `eastus` |
-| Nothing on **Pick Random** | Pool is empty — someone must type `!player1` first |
+| Nothing on **Pick Random** | Pool is empty — someone must type `!player1` first, or the slot is switched out of the show |
+| A player is missing from stream | Check *In the show* on the control panel — the panel dims when a slot is switched out |
 | Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page |
 | Text appears, no audio | Check the browser source isn't muted in OBS's Audio Mixer |
 | Mouth never closes / never opens | Adjust the threshold in `templates/overlay.html` |

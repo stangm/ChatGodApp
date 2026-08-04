@@ -233,6 +233,7 @@ def player_state():
         character = CHARACTERS.get(number)
         flags = display_manager.get(number) or {}
         state[number] = {
+            "active": player.active if player else True,
             "tts_enabled": player.tts_enabled if player else True,
             "current_user": (player.current_user if player else None) or "",
             "voice_name": voice["name"] if voice else config["voice_name"],
@@ -387,6 +388,16 @@ def status_report():
         source = "from Azure" if VOICES_SOURCE == "file" else "shipped with the app"
         rows.append(("Voices", "ok",
                      f"{len(AZURE_VOICES)} loaded {source}, {styled} with styles"))
+
+    # -- Slots in the show ----------------------------------------------------
+    # Only reported when some are off, since "3 of 3" is noise. Worth reporting at
+    # all because a slot switched off looks exactly like a slot that's broken.
+    off = [n for n, p in (twitchbot.players.items() if twitchbot else [])
+           if not p.active]
+    if off:
+        rows.append(("Slots", "warn",
+                     f"player {', '.join(sorted(off))} switched out of the show -- "
+                     "no art, no voice, keyphrase ignored"))
 
     # -- Overlay --------------------------------------------------------------
     count = len(overlay_clients)
@@ -751,9 +762,14 @@ def overlay():
     #
     # An empty slot has no art. Both URLs are None and the template draws nothing,
     # which is what "character": null is for.
-    images, names, flags = {}, {}, {}
+    images, names, flags, active = {}, {}, {}, {}
     for number in numbers:
         character = CHARACTERS.get(number)
+        # Rendered as well as pushed over the socket, so a browser-source reload
+        # while a slot is switched off comes back blank rather than flashing the
+        # character on screen until the next event arrives.
+        player = twitchbot.players.get(number) if twitchbot is not None else None
+        active[number] = player.active if player else True
         images[number] = {
             "closed": art_url(character.art_closed) if character else None,
             "open": art_url(character.art_open) if character else None,
@@ -767,7 +783,7 @@ def overlay():
             live.get("show_character_name") and character and character.has_name)
 
     return render_template('overlay.html', numbers=numbers, images=images,
-                           character_names=names, flags=flags,
+                           character_names=names, flags=flags, active=active,
                            box_sizes=BOX_SIZES, caption_fonts=CAPTION_FONTS)
 
 
@@ -849,10 +865,39 @@ def toggletts(value):
     print(f"TTS for player {player.number}: {player.tts_enabled}")
 
 
+@socketio.on("slot_active")
+def toggle_slot_active(value):
+    """
+    Put a slot in or out of the show.
+
+    Broadcast, not replied: the overlay is the point of the change and it's a
+    different client. The panel that sent it has already moved its own switch.
+
+    Turning a slot off deliberately **keeps its pool**. Re-enabling restores everyone
+    who had already typed the keyphrase rather than making them join again -- and
+    since the pool self-empties after 450 seconds of someone being quiet, keeping it
+    only really matters for short toggles, which is exactly the case where clearing
+    would be most annoying.
+    """
+    player = _player_from(value)
+    if player is None:
+        return
+    player.active = bool(value.get('checked'))
+    print(f"Player {player.number} is {'in' if player.active else 'out of'} the show")
+
+    socketio.emit('slot_active', {'user_number': player.number,
+                                  'active': player.active})
+    socketio.emit('state', player_state())
+    push_status()
+
+
 @socketio.on("pickrandom")
 def pickrandom(value):
     player = _player_from(value)
     if player is None:
+        return
+    if not player.active:
+        print(f"Player {player.number} is out of the show; not picking anyone.")
         return
     twitchbot.random_user(player.number)
 
@@ -861,6 +906,9 @@ def pickrandom(value):
 def chooseuser(value):
     player = _player_from(value)
     if player is None:
+        return
+    if not player.active:
+        print(f"Player {player.number} is out of the show; not assigning anyone.")
         return
     chosen = (value.get('chosen_user') or "").strip().lower()
     if not chosen:
@@ -935,6 +983,17 @@ class Player:
     tts_enabled: bool = True
     pool: Dict[str, datetime] = field(default_factory=dict)  # username -> when they last opted in
 
+    # Whether this slot is in the show at all. Distinct from tts_enabled, which
+    # silences a slot that's still on screen, and from an empty character, which
+    # hides a slot that still speaks. This is the single "out of the show" switch:
+    # nothing drawn, nothing spoken, no pool joins, no picking.
+    #
+    # It exists so a scene can be built for six players and run with four without
+    # the app pooling chatters into characters nobody can see, or spending Azure
+    # characters on them. Layout stays an OBS concern -- a second scene -- because
+    # fixed browser sources can't re-centre themselves when two go dark.
+    active: bool = True
+
 
 class Bot(commands.Bot):
     seconds_active = 450  # seconds of silence before a chatter is dropped from a pool
@@ -983,6 +1042,11 @@ class Bot(commands.Bot):
         # has rendered it, so neither step blocks the bot.
         for player in self.players.values():
             if player.current_user and author == player.current_user:
+                # An inactive slot is out of the show entirely -- nothing drawn,
+                # nothing spoken, and no Azure characters spent on a character
+                # nobody can see.
+                if not player.active:
+                    break
                 self.announce(player, message.content)
                 if player.tts_enabled:
                     self.speech_worker.submit(player.number, player.current_user, message.content)
@@ -991,6 +1055,11 @@ class Bot(commands.Bot):
         # If this is a keyphrase, add the chatter to that player's pool
         for player in self.players.values():
             if message.content == player.keyphrase:
+                # Deliberately ignored while inactive rather than queued: pooling
+                # people for a slot that can't appear leaves them waiting for a turn
+                # that will never come.
+                if not player.active:
+                    break
                 with self._pool_lock:
                     player.pool.pop(author, None)          # re-insert so they land at the end
                     player.pool[author] = message.timestamp

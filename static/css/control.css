@@ -432,6 +432,26 @@ input[type="text"], select {
 
 .field { display: block; margin-bottom: 10px; }
 
+/* ---- in the show ------------------------------------------------------------
+
+   Set apart from the other toggles: it governs everything below it rather than
+   being one option among several.
+*/
+
+.toggle.in-show {
+    margin: 0 0 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--panel-edge);
+    font-weight: 500;
+}
+
+/* Dimmed rather than hidden or disabled. Hiding would make a panel vanish
+   mid-stream, and disabling every control inside is a lot of machinery to say
+   something a shade of grey says on its own -- the server rejects picks and
+   messages regardless, so the panel only has to *look* inert. */
+.panel-off { opacity: 0.45; }
+.panel-off .toggle.in-show { opacity: 1; }
+
 /* ---- what shows on stream ---------------------------------------------------
 
    Grouped and bordered because these three are one decision about the character

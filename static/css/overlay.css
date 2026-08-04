@@ -157,6 +157,11 @@ html, body {
    a browser-source reload shows the same thing as a live toggle.
 */
 
+/* A slot switched out of the show. display:none rather than hidden so it takes no
+   space in the row layout either -- with per-player browser sources the source just
+   goes empty, which is the point. */
+.player-slot.slot-off { display: none; }
+
 .player-slot.hide-character-name .character-name-box,
 .player-slot.hide-chatter-name  .user-name-box,
 .player-slot.hide-message       .user-message-box {
