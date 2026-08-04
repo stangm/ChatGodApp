@@ -31,10 +31,11 @@ var VoiceStyles = (function () {
     /*
        Rebuild one style dropdown.
 
-       "random" is always offered and always first. For a voice with no styles it's
-       the only option, and there it means "no express-as at all" rather than "pick
-       one for me" -- same word, different meaning, which is worth knowing when
-       reading the note this shows.
+       "none" is always offered and always first: the voice plain, with no express-as
+       wrapper. "random" is only offered when the voice actually has styles, because
+       on a voice without them it would be a word for something that cannot happen --
+       which is what the old single-option "random" dropdown was, and it read as
+       though something was being varied.
 
        preferred lets a caller force a value (the server telling us it reset one).
        Without it, whatever is currently selected is kept if the new voice supports
@@ -45,15 +46,22 @@ var VoiceStyles = (function () {
         var available = stylesFor(options.voiceName);
         var current = options.preferred || select.val();
 
-        select.empty().append($('<option>').val('random').text('random'));
+        select.empty().append($('<option>').val('none').text('none (plain)'));
+        if (available.length) {
+            select.append($('<option>').val('random').text('random'));
+        }
         available.forEach(function (style) {
             select.append($('<option>').val(style).text(style));
         });
 
+        var valid = (current === 'none') ||
+                    (current === 'random' && available.length) ||
+                    (available.indexOf(current) !== -1);
+
         var message = '';
-        if (current !== 'random' && available.indexOf(current) === -1) {
-            select.val('random');
-            message = current + " isn't available on this voice - using random";
+        if (!valid) {
+            select.val('none');
+            message = current + " isn't available on this voice - reading it plainly";
         } else {
             select.val(current);
             if (!available.length) message = 'this voice has no speaking styles';

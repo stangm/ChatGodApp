@@ -154,7 +154,7 @@ def _clamp_style(entry):
     library depend on Azure being installed to read a JSON file.
     """
     style = entry.get("default_style")
-    if not style or style == "random":
+    if not style or style in ("random", "none"):
         return ""
 
     voice = entry.get("default_voice")
@@ -172,9 +172,14 @@ def _clamp_style(entry):
     if style in available:
         return ""
 
-    entry["default_style"] = "random"
-    return (f"({voice} can't do '{style}', so the style was set to random -- "
-            "Azure ignores unsupported styles silently.)")
+    # Falls back to "none" rather than "random". Swapping in a different emotion for
+    # the one that was asked for is a bigger change than applying none at all, and
+    # "random" on a voice with no styles would be a word for something that can't
+    # happen.
+    entry["default_style"] = "none"
+    suggestion = (f" It can do: {', '.join(available[:6])}." if available
+                  else " That voice has no speaking styles.")
+    return (f"({voice} can't do '{style}', so it will be read plainly.{suggestion})")
 
 
 def _read_file():

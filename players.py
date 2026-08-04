@@ -14,7 +14,14 @@ never inspects.
 """
 
 # Style applied to a player's voice until the operator picks one in the web UI.
-# "random" makes each message pick a different style.
+#
+#   "random"  pick a different one of the voice's styles each message
+#   "none"    no express-as at all -- the voice exactly as Azure ships it
+#   any style name, e.g. "cheerful"
+#
+# "random" only means anything on a voice that has styles; on one that doesn't, it
+# resolves to plain delivery anyway. Set this to "none" if you'd rather the default
+# be a steady read rather than a different emotion every line.
 DEFAULT_VOICE_STYLE = "random"
 
 # Since audio now plays in the browser, OBS no longer hears anything on "Line In" and

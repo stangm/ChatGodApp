@@ -110,21 +110,38 @@ def styles_for(voice_name):
     return list(entry["styles"]) if entry else []
 
 
+NO_STYLE = "none"
+
+
 def resolve_style(voice_name, voice_style):
     """
     Pick a style that will actually do something on this voice.
 
-    "random" picks from what the voice supports. A style the voice doesn't
-    support -- from a stale dropdown or a chat prefix -- degrades to random
-    rather than being sent and silently ignored. Returns None when the voice
-    supports no styles, meaning "synthesize without express-as".
+    Returns None to mean "synthesize with no express-as at all".
+
+    **"none" and "random" are different requests**, which they weren't before.
+    "random" used to serve as both "pick one" and "do nothing", depending on whether
+    the voice had any styles -- one word for two behaviours, and no way at all to ask
+    an expressive voice to speak plainly. Aria has 16 styles, so "random" guaranteed
+    every line got an emotional delivery; there was no way to say "just Aria".
+
+    An unsupported style now falls back to **none** rather than to a random one.
+    Substituting a different emotion for the one that was asked for is a bigger
+    change than declining to apply any: a chatter who types "(whispering)" and hears
+    shouting has been actively misled, where plain delivery is simply the request not
+    landing.
     """
+    if voice_style == NO_STYLE:
+        return None
+
     available = styles_for(voice_name)
     if not available:
         return None
+    if voice_style == "random":
+        return random.choice(available)
     if voice_style in available:
         return voice_style
-    return random.choice(available)
+    return None
 
 AZURE_PREFIXES = {
     "(angry)" : "angry",

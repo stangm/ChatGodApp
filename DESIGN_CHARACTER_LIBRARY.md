@@ -244,7 +244,18 @@ rendering neutral is the confusing behaviour this is meant to remove.
 >
 > Deliberately **not** clamped on load: rewriting someone's file at startup without being asked is
 > worse than showing the problem. `/setup` surfaces it as a note when the page opens, and synthesis
-> already falls back to `random` regardless, so nothing misbehaves in the meantime.
+> already falls back safely regardless, so nothing misbehaves in the meantime.
+
+> **`none` became a first-class style**, which the original design missed. `random` was serving as
+> both "pick one each message" and "do nothing", depending on whether the voice had any styles —
+> one word, two behaviours — and there was no way at all to ask an expressive voice to speak plainly.
+> Aria has 16 styles, so `random` guaranteed every line got an emotional delivery.
+>
+> Unsupported styles now fall back to `none` rather than to a random one. Substituting a different
+> emotion for the one that was requested is a bigger change than declining to apply any: a chatter
+> who types `(whispering)` and hears shouting has been actively misled, where plain delivery is
+> simply the request not landing. `random` is also no longer offered on voices without styles, since
+> there it named something that couldn't happen.
 
 ---
 

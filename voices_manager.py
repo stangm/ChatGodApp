@@ -1,4 +1,4 @@
-from azure_text_to_speech import AzureTTSManager, styles_for
+from azure_text_to_speech import NO_STYLE, AzureTTSManager, styles_for
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE, OBS_WEBSOCKETS_ENABLED
 
 
@@ -60,12 +60,20 @@ class TTSManager:
         print(f"Player {user_number}: voice name is now {voice_name}")
 
         available = styles_for(voice_name)
-        if voice["style"] != "random" and voice["style"] not in available:
-            stranded, voice["style"] = voice["style"], "random"
-            print(f"Player {user_number}: {voice_name} doesn't support "
-                  f"'{stranded}', falling back to random.")
-            return "random"
-        return None
+        # "none" is always valid -- it means no express-as at all. "random" is only
+        # valid on a voice that has styles to pick from; on one that doesn't it would
+        # claim to be varying something that can't vary.
+        if voice["style"] == NO_STYLE:
+            return None
+        if voice["style"] == "random" and available:
+            return None
+        if voice["style"] in available:
+            return None
+
+        stranded, voice["style"] = voice["style"], NO_STYLE
+        print(f"Player {user_number}: {voice_name} doesn't support "
+              f"'{stranded}', reading plainly instead.")
+        return NO_STYLE
 
     def reset_to(self, user_number, character):
         """

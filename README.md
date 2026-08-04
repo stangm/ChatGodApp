@@ -250,9 +250,14 @@ A chatter can override the style by prefixing their message: `(angry)`, `(cheerf
 
 Styles aren't supported by every voice, and Azure's response to an unsupported one is to render the
 line neutral without reporting anything. So the style dropdown only offers what the selected voice
-can actually do, `random` picks from that same set, and a prefix asking for something unavailable
-falls back to random rather than silently doing nothing. Change to a voice that can't do the style
-you had selected and the control panel tells you it switched.
+can actually do, and anything unavailable falls back to **none** — the line is read plainly rather
+than in some other emotion nobody asked for. Change to a voice that can't do the style you had
+selected and the control panel tells you it switched.
+
+**`none` and `random` are different.** `none` means no expression at all, the voice exactly as Azure
+ships it. `random` picks a different style each message, and is only offered on voices that have
+styles to pick from. If you want an expressive voice delivered straight — Aria without one of her 16
+moods on every line — that's `none`.
 
 **Expressive voices are rarer than you'd expect, and concentrated in en-US.** Of roughly 119 English
 voices, 21 support styles — and 18 of those are American. Outside the US it's `en-GB` Ryan and Sonia

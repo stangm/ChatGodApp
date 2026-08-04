@@ -14,8 +14,8 @@ import random
 import os
 import uuid
 
-from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, VOICE_CATALOG,
-                                  VOICES_SOURCE, styles_for)
+from azure_text_to_speech import (AZURE_VOICES, AZURE_VOICE_STYLES, NO_STYLE,
+                                  VOICE_CATALOG, VOICES_SOURCE, styles_for)
 import usage
 from azure_text_to_speech import AzureTTSManager
 import characters
@@ -157,7 +157,11 @@ def _voice_label(voice_id):
 # Built from the same catalog the TTS code uses, so the dropdowns can't drift out
 # of sync with what Azure will actually accept.
 VOICE_OPTIONS = [(voice, _voice_label(voice)) for voice in AZURE_VOICES]
-STYLE_OPTIONS = ["random"] + list(AZURE_VOICE_STYLES)
+# "none" first because it's the baseline -- the voice as Azure ships it, with no
+# express-as wrapper at all. "random" then means "pick one each message", which is
+# only meaningful on a voice that has styles, so the dropdown drops it for voices
+# that don't rather than offering a word for something that can't happen.
+STYLE_OPTIONS = [NO_STYLE, "random"] + list(AZURE_VOICE_STYLES)
 
 
 def _grouped_voices():
@@ -195,9 +199,10 @@ def _grouped_voices():
 
 VOICE_GROUPS = _grouped_voices()
 
-# voice -> the styles it really supports, handed to the control panel so it can
-# narrow the style dropdown as the voice changes. A voice with an empty list
-# supports no express-as at all, and only "random" (meaning "none") applies.
+# voice -> the styles it really supports, handed to both operator pages so they can
+# narrow the style dropdown as the voice changes. A voice with an empty list supports
+# no express-as at all, so its dropdown offers "none" alone -- offering "random"
+# there would name something that can't happen.
 VOICE_STYLE_MAP = {voice: styles_for(voice) for voice in AZURE_VOICES}
 
 
