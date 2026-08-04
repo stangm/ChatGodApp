@@ -228,6 +228,12 @@ replaces a diagnostic conversation.
 From the control panel you can assign a chatter to each player slot, pick voices and styles, and
 toggle TTS per player, all live.
 
+**"One speaker at a time"** queues messages so characters don't talk over each other, with a small
+overlap so it sounds like conversation rather than a walkie-talkie. Off by default — at three
+players overlap reads as liveliness, and it's at five or six that it becomes noise. Busy chat builds
+a backlog, so the oldest waiting message is dropped rather than read a minute late. The tuning
+constants (`SPEECH_OVERLAP_MS`, `SPEECH_QUEUE_MAX`) are at the top of `chat_god_app.py`.
+
 **"In the show"** takes a slot out entirely: nothing drawn, nothing spoken, its keyphrase ignored,
 and no Azure characters spent on it. That's what lets you build one OBS scene for six players and
 run a four-player night without the app queueing chatters for characters nobody can see. Layout

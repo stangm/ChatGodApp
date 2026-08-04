@@ -79,7 +79,7 @@ toggle that changes the size. The control panel toggles all three live and repor
 Mark's own `characters.json` is currently a copy of the example — Henry Potter in slot 1, The
 Narrator in slot 2.
 
-### Stages C and D are built — `/setup` and runtime assignment (**untested**)
+### Stages C and D — `/setup` and runtime assignment
 
 `/setup` lists the player slots and the character library. You can create and edit characters, assign
 them to slots, save a slot's live voice back onto its character, and delete (refused while assigned).
@@ -101,7 +101,7 @@ frame is written, because mismatched dimensions make the character jump when it 
 one frame would create exactly that state. Art overwrites in place, which only works because
 `art_url()` cache-busts on mtime.
 
-**Stage H is built** — `/setup` is now three pages, which is what keeps it usable as the library
+**Stage H** — `/setup` is three pages, which is what keeps it usable as the library
 grows:
 
 | Page | Holds |
@@ -116,7 +116,7 @@ into the editor. Two forms with overlapping fields is what let the style dropdow
 Stages F (casts) and G (appearance) are not built. Both wanted this split first, since both add
 sections to these pages.
 
-### Slot enable/disable (**untested**)
+### Slot enable/disable
 
 `Player.active` and an *In the show* switch at the top of each control panel. Off means: overlay
 draws nothing, no synthesis, keyphrase ignored, Pick Random and Choose user refused. It exists so a
@@ -138,6 +138,26 @@ case where clearing would annoy people most.
 **Layout stays an OBS concern.** Fixed browser sources can't re-centre when two go dark, so the
 answer for a 6-vs-4 night is two OBS scenes, not app-side reflow.
 
+### Speech gate (**untested**)
+
+*One speaker at a time* on the control panel. Off by default, matching how the app has always
+behaved. `SpeechPacer` sits after synthesis and releases clips one at a time, timed from each wav's
+real duration with a 350ms overlap so it reads as conversation rather than strict queuing.
+
+Three decisions that matter more than the feature:
+
+- **Timed from the clip, not from pages reporting in.** A page that closes or drops its socket
+  mid-clip would stall a report-based queue forever and mute the whole show. Being a few hundred
+  milliseconds out is a far better failure than silence, so nothing waits on a client.
+- **Separate thread from `SpeechWorker`.** Sleeping inside the synthesis loop would be fewer lines
+  but would delay later clips, compounding the lag.
+- **`SPEECH_QUEUE_MAX` (8) must stay well under `AUDIO_CACHE_SIZE` (50).** `register_audio()` deletes
+  the oldest wav past 50, so a long backlog would have its files removed before playing and the
+  overlay would 404 and skip them with nothing to explain why.
+
+Turning the gate off flushes the backlog rather than stranding it. A clip whose slot was switched out
+of the show while it waited is skipped at release time.
+
 ### Not done
 
 1. **Nothing survives a restart.** Voice, style, TTS toggle, caption toggles and assignments are all
@@ -153,11 +173,7 @@ answer for a 6-vs-4 night is two OBS scenes, not app-side reflow.
    than it sounds because every caption size is already a CSS custom property. Font selection is the
    expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
    family locally when it's picked.
-4. **A global speech gate** — one speaker at a time. Playback is per-overlay-page, so two slots can
-   already talk over each other; at six that would be constant. Designed but not built, and the
-   failure mode matters more than the feature: a gate that stalls mutes the whole show, so it needs
-   a duration-based timeout rather than relying on pages reporting in. Also note `AUDIO_CACHE_SIZE`
-   is 50 — a backlog longer than that would have its wavs deleted before playing.
+4. ~~A global speech gate~~ — **built**, see above.
 5. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
    the **rolling log file**, then E onwards (the wizard) which only pays off at more than one user.
 6. ~~`templates/index.html` orphaned~~ — deleted.
@@ -336,43 +352,22 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
 
 ## Picking it back up
 
-**Two things are written but have never run: `/setup` (stages C and D) and `config.json`.**
+Everything through stage H is built and exercised: the character library and `/setup`'s three pages,
+art upload, runtime assignment, the slot *In the show* switch, the status panel, `start.bat`, and
+`none` as a distinct style.
 
-For `/setup`, in this order — each exercises a different write path:
+**The one exception is `config.json`.** It has never had a file on disk, so credentials have only
+ever resolved from environment variables. That matters more than the others because it's the
+mechanism for handing over a configured machine — worth ten minutes before you set the second
+streamer up:
 
-- Open `/setup` with no `characters.json`. It should list your three slots using the filename
-  convention, and **write nothing** until you act.
-- Create a character, assign it to player 1. The overlay should swap art **without a refresh**, and
-  `characters.json` should appear.
-- Change the voice on the control panel, then hit *Save this voice as the default*. Reassign the
-  slot — it should come back with that voice.
-- Try deleting a character that's assigned. It should refuse and name the slot.
-- Put `_comment` back into `characters.json` by hand, then save something in `/setup`. The comment
-  must survive.
-
-For `config.json`:
-
-- Copy `config.example.json` to `config.json`, fill it in, unset the environment variables, restart.
+- Copy `config.example.json` to `config.json`, fill it in, unset the `CHATGOD_*` variables, restart.
   Startup should print `config.json: found` and `(from config.json)` against each setting.
 - Put a deliberate syntax error in it — the app should print the parse error, say it's ignoring the
   file, and still start.
-- Set `CHATGOD_TWITCH_CHANNEL` as a variable while the file also has one: the variable should win.
+- Set one variable while the file also has it: the variable should win.
 
-Two things from the status panel were also never confirmed: the **Overlay** row going green as OBS
-connects and amber when it closes, and the **Copy diagnostics** button (check the pasted text has no
-key or token in it). The Azure and Quota rows are proven — `usage.json` recorded the startup chime.
-
-Everything else is clean, merged and pushed.
-
-**The status panel is the recommendation** — install stage C, and the other half of the problem the
-launcher solves. Starting reliably is done; *knowing it's working before going live* isn't. Twitch,
-Azure, voices and overlay connections are each silently wrong today, and every one of them surfaces
-mid-stream as "it's not working". A green/red block at the top of the control panel turns most of
-those into a line she reads out to you.
-
-A few smaller checks were never run and are worth folding into whatever comes next rather than doing
-on their own: deleting `characters.json` and restarting to confirm the fallback path still works end
-to end, and the reported width input recalculating at values other than 500.
+Then pick from *Not done* above.
 
 ---
 
@@ -381,5 +376,5 @@ to end, and the reported width input recalculating at values other than 500.
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 2 Aug 2026 — character library stages C, D and E built (**untested**): /setup, runtime
-assignment, save-as-default, art upload. `config.json` also untested. A/A2, launcher, status panel working.
+Last updated: 2 Aug 2026 — character library through stage H built and tested, plus the slot
+*In the show* switch. `config.json` remains the one untested path.

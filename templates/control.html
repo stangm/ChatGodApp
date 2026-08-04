@@ -30,6 +30,16 @@
                 socket.emit('tts', { user_number: player(this), checked: $(this).prop('checked') });
             });
 
+            $('#speech-gate').on('change', function() {
+                socket.emit('speech_gate', { checked: $(this).prop('checked') });
+            });
+
+            // Global rather than per-player, so it rides its own event instead of
+            // being smuggled into the per-slot state push.
+            socket.on('show_settings', function(msg) {
+                $('#speech-gate').prop('checked', msg.speech_gate);
+            });
+
             $('input.active-checkbox').on('change', function() {
                 var number = player(this), on = $(this).prop('checked');
                 socket.emit('slot_active', { user_number: number, checked: on });
@@ -268,6 +278,22 @@
         <code>python fetch_voices.py</code> to build a proper list.
     </p>
     {% endif %}
+
+    <!-- Settings that govern the whole show rather than one slot, so they can't live
+         inside a player panel. -->
+    <section class="show-settings">
+        <label class="toggle">
+            <input type="checkbox" id="speech-gate" {% if speech_gate %}checked{% endif %}>
+            <span>One speaker at a time</span>
+        </label>
+        <p class="field-note">
+            Queues messages so characters don't talk over each other, with a
+            {{ speech_overlap_ms }}ms overlap so it sounds like conversation rather than a
+            walkie-talkie. Worth turning on at five or six players; at three, overlap reads as
+            liveliness. Busy chat builds a backlog, so the oldest waiting message is dropped rather
+            than read a minute late.
+        </p>
+    </section>
 
     <div class="panels">
         {% for number, config in players.items() %}

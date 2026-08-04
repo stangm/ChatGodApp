@@ -438,6 +438,21 @@ input[type="text"], select {
    being one option among several.
 */
 
+/* Whole-show settings, above the per-player panels because that's the scope they
+   act at -- one of these inside a player panel would read as belonging to that
+   player. */
+.show-settings {
+    margin: 0 0 22px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    max-width: 560px;
+}
+
+.show-settings .toggle { margin: 0 0 6px; font-weight: 500; }
+.show-settings .field-note { margin: 0; }
+
 .toggle.in-show {
     margin: 0 0 14px;
     padding-bottom: 12px;

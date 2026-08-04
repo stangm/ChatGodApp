@@ -3,12 +3,14 @@ from twitchio import *
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, Optional
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from flask import Flask, abort, redirect, render_template, request, send_file, url_for
 from flask_socketio import SocketIO, emit
 import asyncio
 import queue
 import threading
+import time
+import wave
 import pytz
 import random
 import os
@@ -118,15 +120,133 @@ class SpeechWorker:
             try:
                 path = self.tts_manager.synthesize(text, number)
                 if path:
-                    socketio.emit('speak', {
+                    speech_pacer.submit({
                         'user_number': number,
                         'current_user': speaker,
                         'audio_url': f"/audio/{register_audio(path)}.wav",
-                    })
+                    }, path)
             except Exception as exc:
                 print(f"TTS failed for player {number}: {exc}")
             finally:
                 self._queue.task_done()
+
+
+# ---------------------------------------------------------------------------
+# Pacing playback: one speaker at a time
+# ---------------------------------------------------------------------------
+
+# Off by default, matching how the app has always behaved. Overlap at three players
+# reads as liveliness; it's at five or six that it becomes noise, so this is a switch
+# rather than a rule.
+SPEECH_GATE_DEFAULT = False
+
+# How much of the next clip starts before the previous one finishes. Strict queuing
+# (0) sounds like a walkie-talkie -- the dead air between clips is what makes it feel
+# robotic -- and a small overlap reads as conversation instead.
+#
+# Kept small because Azure wavs carry trailing silence of unpredictable length, so a
+# large overlap sometimes lands entirely on silence and sometimes clips a final word.
+SPEECH_OVERLAP_MS = 350
+
+# How many clips may wait. At roughly four seconds each this is about half a minute
+# of backlog, past which a message is being read to a chat that has moved on -- so
+# the oldest is dropped rather than queued forever.
+#
+# **This must stay well under AUDIO_CACHE_SIZE.** register_audio() deletes the oldest
+# wav once more than 50 are registered, so a backlog approaching that number would
+# have its files removed before they played, and the overlay would 404 and skip them
+# with nothing to explain why.
+SPEECH_QUEUE_MAX = 8
+
+speech_gate_enabled = SPEECH_GATE_DEFAULT
+
+
+def _wav_seconds(path):
+    """
+    Length of a wav, or a conservative guess if it can't be read.
+
+    stdlib `wave` rather than soundfile or mutagen: it's a header read, it has no
+    import cost, and the failure mode of guessing slightly wrong is a small timing
+    error rather than anything breaking.
+    """
+    try:
+        with wave.open(path, "rb") as handle:
+            rate = handle.getframerate()
+            return handle.getnframes() / float(rate) if rate else 3.0
+    except Exception:
+        return 3.0
+
+
+class SpeechPacer:
+    """
+    Releases clips to the overlays one at a time when the gate is on.
+
+    **Timed from each clip's own duration rather than from the pages reporting in.**
+    The obvious design has the overlay say "finished" and the server release the
+    next, which is more accurate -- but a page that closes, crashes or loses its
+    socket mid-clip would stall the queue forever and mute the entire show. Being
+    a few hundred milliseconds out is a much better failure than silence, so nothing
+    here waits on a client.
+
+    **Separate from SpeechWorker on purpose.** Sleeping inside the synthesis loop
+    would be fewer lines, but it would also stop synthesis while waiting, so later
+    clips would arrive late and the delay would compound. Synthesis runs ahead;
+    this decides when each clip goes out.
+    """
+
+    def __init__(self):
+        self._queue = deque()
+        self._lock = threading.Lock()
+        self._wake = threading.Event()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def submit(self, payload, path):
+        # Gate off is the old behaviour exactly: straight out, no queue, no delay.
+        if not speech_gate_enabled:
+            socketio.emit('speak', payload)
+            return
+
+        with self._lock:
+            self._queue.append((payload, _wav_seconds(path)))
+            while len(self._queue) > SPEECH_QUEUE_MAX:
+                dropped, _ = self._queue.popleft()
+                print(f"Speech queue full; dropped player {dropped['user_number']}'s "
+                      "oldest clip rather than reading it minutes late.")
+        self._wake.set()
+
+    def flush(self):
+        """
+        Send everything queued at once. Called when the gate is switched off, so
+        turning it off releases the backlog rather than stranding it.
+        """
+        with self._lock:
+            pending, self._queue = list(self._queue), deque()
+        for payload, _ in pending:
+            socketio.emit('speak', payload)
+
+    def _run(self):
+        while True:
+            with self._lock:
+                item = self._queue.popleft() if self._queue else None
+            if item is None:
+                self._wake.wait(timeout=1.0)
+                self._wake.clear()
+                continue
+
+            payload, seconds = item
+
+            # Checked here rather than at submit: a slot can be switched out of the
+            # show while its clip is still waiting, and playing it then would put a
+            # voice on stream with no character to attach it to.
+            player = twitchbot.players.get(payload['user_number']) if twitchbot else None
+            if player is not None and not player.active:
+                continue
+
+            socketio.emit('speak', payload)
+            time.sleep(max(0.0, seconds - SPEECH_OVERLAP_MS / 1000.0))
+
+
+speech_pacer = SpeechPacer()
 
 
 def _voice_label(voice_id):
@@ -491,6 +611,8 @@ def control():
                            default_style=DEFAULT_VOICE_STYLE,
                            characters_source=CHARACTERS_SOURCE,
                            status=status_report(),
+                           speech_gate=speech_gate_enabled,
+                           speech_overlap_ms=SPEECH_OVERLAP_MS,
                            state=player_state())
 
 
@@ -812,6 +934,7 @@ def connect():
     print("Socket client connected.")
     emit('state', player_state())
     emit('status', status_report())
+    emit('show_settings', {'speech_gate': speech_gate_enabled})
 
 
 @socketio.on("overlay_here")
@@ -863,6 +986,23 @@ def toggletts(value):
         return
     player.tts_enabled = bool(value.get('checked'))
     print(f"TTS for player {player.number}: {player.tts_enabled}")
+
+
+@socketio.on("speech_gate")
+def toggle_speech_gate(value):
+    """
+    Turn one-speaker-at-a-time on or off, live.
+
+    Switching it **off flushes the backlog** rather than stranding it. Anything
+    already queued was about to be read; leaving it stuck would look like the app
+    swallowing messages at exactly the moment you asked for less restriction.
+    """
+    global speech_gate_enabled
+    speech_gate_enabled = bool(value.get('checked')) if isinstance(value, dict) else False
+    print(f"Speech gate {'on -- one at a time' if speech_gate_enabled else 'off'}")
+    if not speech_gate_enabled:
+        speech_pacer.flush()
+    socketio.emit('show_settings', {'speech_gate': speech_gate_enabled})
 
 
 @socketio.on("slot_active")
