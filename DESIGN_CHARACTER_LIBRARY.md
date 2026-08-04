@@ -233,6 +233,19 @@ you want. The app reads the cache at startup and never blocks on Azure to render
 switched to a voice without it. Fall back to `random` and flash a note on the control panel. Silently
 rendering neutral is the confusing behaviour this is meant to remove.
 
+> **This has to hold in three places, which took two attempts to get right.** The control panel
+> narrowed its dropdown from the start; `/setup` was built later and didn't, so it displayed
+> "Aria — 16 styles" beside a list of all thirty. Worse than the panel's version of the same bug,
+> because a bad *default* is wrong every time that character is assigned rather than for one session.
+>
+> The narrowing logic now lives in `static/js/voice-styles.js`, shared by both screens — copying it
+> is what let them drift in the first place. And `Library.upsert()` clamps server-side, because the
+> dropdown is only a UI guard and the docs actively encourage hand-editing `characters.json`.
+>
+> Deliberately **not** clamped on load: rewriting someone's file at startup without being asked is
+> worse than showing the problem. `/setup` surfaces it as a note when the page opens, and synthesis
+> already falls back to `random` regardless, so nothing misbehaves in the meantime.
+
 ---
 
 ## Casts — loading a group of characters at once

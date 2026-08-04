@@ -496,6 +496,7 @@ def setup():
                            voices=VOICE_OPTIONS,
                            voice_groups=VOICE_GROUPS,
                            styles=STYLE_OPTIONS,
+                           voice_styles=VOICE_STYLE_MAP,
                            display_flags=DISPLAY_FLAGS,
                            characters_source=CHARACTERS_SOURCE,
                            live=(twitchbot.tts_manager.voices if twitchbot else {}))

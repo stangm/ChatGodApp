@@ -7,6 +7,39 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ static_v('css/control.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+    <script src="{{ static_v('js/voice-styles.js') }}"></script>
+
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function() {
+            // Same map and the same narrowing the control panel uses. Without this
+            // the page shows "Aria - 16 styles" beside a list of thirty, and the
+            // wrong pick gets saved as the character's default rather than being a
+            // mistake for one session.
+            VoiceStyles.init({{ (voice_styles or {}) | tojson }});
+
+            function refresh(el, preferred) {
+                var form = $(el).closest('form');
+                VoiceStyles.refresh({
+                    select: form.find('select.default-style'),
+                    note: form.find('.style-note'),
+                    voiceName: form.find('select.default-voice').val(),
+                    preferred: preferred
+                });
+            }
+
+            // Narrow each form to its stored voice on load, keeping the saved style
+            // if it's valid. An invalid one shows the note explaining the swap --
+            // which is how you find out a hand-edited characters.json has a style
+            // Azure was quietly ignoring.
+            $('form').each(function() {
+                var voice = $(this).find('select.default-voice');
+                if (voice.length) refresh(voice, $(this).find('select.default-style').val());
+            });
+
+            $('select.default-voice').on('change', function() { refresh(this); });
+        });
+    </script>
 </head>
 <body>
 
@@ -115,7 +148,7 @@
 
                 <label class="field">
                     <span class="label">Default voice</span>
-                    <select name="default_voice">
+                    <select name="default_voice" class="default-voice">
                         <option value="">(use players.py)</option>
                         {% for locale_label, group in voice_groups %}
                         <optgroup label="{{ locale_label }}">
@@ -129,12 +162,17 @@
 
                 <label class="field">
                     <span class="label">Default style</span>
-                    <select name="default_style">
+                    <!-- Rendered with every style, then narrowed on load to what this
+                         voice supports. Server-side narrowing would need the voice
+                         map in Jinja as well as JS, and the dropdown has to re-narrow
+                         when the voice changes anyway. -->
+                    <select name="default_style" class="default-style">
                         {% for value in styles %}
                         <option value="{{ value }}" {% if value == entry.get('default_style', 'random') %}selected{% endif %}>{{ value }}</option>
                         {% endfor %}
                     </select>
                 </label>
+                <div class="style-note"></div>
 
                 <div class="shows">
                     <span class="label">Show on stream</span>

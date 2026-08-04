@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="{{ static_v('css/control.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js" integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ==" crossorigin="anonymous"></script>
+    <script src="{{ static_v('js/voice-styles.js') }}"></script>
 
     <script type="text/javascript" charset="utf-8">
         $(document).ready(function() {
@@ -90,7 +91,9 @@
 
             // voice -> styles that voice actually supports. Sent by the server from
             // voices.json, so the dropdown can't offer a style Azure will ignore.
-            var VOICE_STYLES = {{ (voice_styles or {}) | tojson }};
+            // The narrowing itself lives in static/js/voice-styles.js, shared with
+            // the setup screen -- the two drifted apart once already.
+            VoiceStyles.init({{ (voice_styles or {}) | tojson }});
 
             function note(number, text) {
                 var el = $('#style-note-' + number);
@@ -98,26 +101,13 @@
                 el.toggleClass('visible', !!text);
             }
 
-            // Rebuild the style dropdown for whichever voice is selected. "random"
-            // is always offered; for a voice with no styles it's the only option,
-            // and it means "no express-as at all" rather than "pick one".
             function refreshStyles(number, voiceName, preferred) {
-                var select = $('#voicestyle-' + number);
-                var available = VOICE_STYLES[voiceName] || [];
-                var current = preferred || select.val();
-
-                select.empty().append($('<option>').val('random').text('random'));
-                available.forEach(function(style) {
-                    select.append($('<option>').val(style).text(style));
+                VoiceStyles.refresh({
+                    select: '#voicestyle-' + number,
+                    note: '#style-note-' + number,
+                    voiceName: voiceName,
+                    preferred: preferred
                 });
-
-                if (current !== 'random' && available.indexOf(current) === -1) {
-                    select.val('random');
-                    note(number, current + ' isn\'t available on this voice - using random');
-                } else {
-                    select.val(current);
-                    note(number, available.length ? '' : 'this voice has no speaking styles');
-                }
             }
 
             $('select.voicename').on('change', function() {

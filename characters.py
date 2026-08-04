@@ -137,6 +137,46 @@ def _conventional(number, config):
     )
 
 
+def _clamp_style(entry):
+    """
+    Drop a default_style the character's voice can't actually do. Returns a note to
+    show, or "".
+
+    The dropdown on /setup narrows to the supported styles, but that's a UI guard and
+    the docs actively encourage hand-editing `characters.json` -- so this is the one
+    that holds. It matters more for a character than for a live selection: a bad live
+    style is wrong for one session, a bad default is wrong every time that character
+    is assigned, forever, and Azure reports nothing either way. It just renders the
+    line flat.
+
+    Imported inside the function because azure_text_to_speech imports config and
+    pulls in the Speech SDK; a module-level import here would make the character
+    library depend on Azure being installed to read a JSON file.
+    """
+    style = entry.get("default_style")
+    if not style or style == "random":
+        return ""
+
+    voice = entry.get("default_voice")
+    if not voice:
+        # No voice means players.py decides, and that can change independently, so
+        # there's nothing stable to validate against.
+        return ""
+
+    try:
+        from azure_text_to_speech import styles_for
+    except Exception:
+        return ""
+
+    available = styles_for(voice)
+    if style in available:
+        return ""
+
+    entry["default_style"] = "random"
+    return (f"({voice} can't do '{style}', so the style was set to random -- "
+            "Azure ignores unsupported styles silently.)")
+
+
 def _read_file():
     """Parsed characters.json, or None if it's absent or unreadable."""
     if not os.path.exists(CHARACTERS_FILE):
@@ -314,8 +354,11 @@ class Library:
                     entry.pop(key, None)
                 else:
                     entry[key] = str(value).strip()
+
+            note = _clamp_style(entry)
             self.characters[char_id] = entry
-            return self.save()
+            ok, message = self.save()
+            return ok, (f"{message} {note}".strip() if ok else message)
 
     def delete(self, char_id):
         """

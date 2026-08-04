@@ -275,6 +275,7 @@ Don't relitigate these without a reason. Rationale is in the design docs; this i
 | Name size hierarchy set by `maxFontPixels` caps, not by fitting — fitting let string length decide which name looked bigger | `templates/overlay.html` |
 | Caption boxes `display:none` so the source can shrink; art top-anchored so it never moves | `static/css/overlay.css` |
 | Size arithmetic split — policy on the server, one multiply in the browser | `characters.py` |
+| Style narrowing shared in `static/js/voice-styles.js`, and clamped again server-side | `DESIGN_CHARACTER_LIBRARY.md` |
 | Launcher script, not a PyInstaller build | `DESIGN_GUIDED_INSTALL.md` |
 | Premium Azure voices excluded by default (they bill separately) | `fetch_voices.py` |
 | Legacy env names kept, but announced loudly at startup | `config.py` |
