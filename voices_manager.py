@@ -71,8 +71,8 @@ class TTSManager:
             return None
 
         stranded, voice["style"] = voice["style"], NO_STYLE
-        print(f"Player {user_number}: {voice_name} doesn't support "
-              f"'{stranded}', reading plainly instead.")
+        print(f"Player {user_number}: '{stranded}' isn't available on "
+              f"{voice_name} - changing to none.")
         return NO_STYLE
 
     def reset_to(self, user_number, character):

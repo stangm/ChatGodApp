@@ -177,9 +177,11 @@ def _clamp_style(entry):
     # "random" on a voice with no styles would be a word for something that can't
     # happen.
     entry["default_style"] = "none"
+    # Same wording as the dropdown note, and naming the value it changed to rather
+    # than describing the effect -- the two appear seconds apart on the same page.
     suggestion = (f" It can do: {', '.join(available[:6])}." if available
                   else " That voice has no speaking styles.")
-    return (f"({voice} can't do '{style}', so it will be read plainly.{suggestion})")
+    return (f"('{style}' isn't available on {voice} - changing to none.{suggestion})")
 
 
 def _read_file():

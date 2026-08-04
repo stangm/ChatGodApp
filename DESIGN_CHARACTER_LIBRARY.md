@@ -1,6 +1,7 @@
 # Design: character library and setup screen
 
-**Status: stages A, A2, B, C, D and E are built.** Remaining: F (casts) and G (appearance). The
+**Status: stages A, A2, B, C, D and E are built.** Remaining: F (casts), G (appearance) and H
+(splitting `/setup` up, which should come first). The
 staging section at the bottom marks each one, and the notes under the built stages record what
 changed during implementation — several decisions here were revised once they met reality, and those
 revisions are marked inline rather than by rewriting the original reasoning.
@@ -429,11 +430,75 @@ Worth doing after the launcher (install stage B), which is higher value for the 
 
 ---
 
+## Splitting `/setup` up
+
+The first version put slots and the whole character library on one page, with every character fully
+expanded — roughly ten form controls each. Fine at three characters, unusable at fifteen, and it gets
+worse in a specific way: **the frequently-used part gets pushed further down every time you add a
+character you rarely touch.**
+
+**The real problem is one page doing two unrelated jobs.**
+
+| Task | How often | What it needs |
+|---|---|---|
+| Assigning characters to slots | Often — between streams, sometimes during | One screen, no scrolling, no thinking |
+| Editing a character's voice, art, captions | Rarely — once when created, occasionally after | Room to show everything at once |
+
+Bundling them means the rare task's bulk is permanently in the way of the frequent one.
+
+### The shape
+
+**`/setup` becomes slots only.** One compact row per player: current character, a dropdown to change
+it, the live voice, and *save as default*. **Bounded by the number of players, not the number of
+characters**, so it fits on one screen permanently — which is the whole point.
+
+**`/setup/characters` is the library, as a grid of art.** Characters are *pictures*; a wall of
+thumbnails with names under them lets you find the goblin by looking rather than by reading a list of
+ids. Each card carries the art, the display name, and a badge when it's in a slot. Nothing else — no
+fields, no buttons beyond opening it.
+
+**`/setup/character/<id>` is one character, alone on a page.** This is the move that actually solves
+the clutter, because the editor stops competing for space: voice, style, the three caption toggles,
+both art frames shown large, upload controls and delete, all comfortably laid out.
+
+### Why a page rather than an accordion or a modal
+
+**No new JavaScript.** Expanding rows or a dialog both need state management that doesn't exist yet.
+A page per character is a link and a form post, which is what the rest of `/setup` already is. The
+project has kept its JS to two small shared files; this keeps it there.
+
+**Linkable.** You can bookmark a character's editor.
+
+**It leaves room for stages F and G.** Casts and appearance settings both want to live under
+`/setup`. Once it's a small hub with sections instead of one long page, they're two more entries
+rather than two more scrolls.
+
+### Create and edit should be one path
+
+The current page has a *New character* form separate from the per-character edit form — two forms
+with overlapping fields that have to stay in sync. That's exactly the drift that produced the style
+dropdown bug, where `/setup` and the control panel disagreed for weeks.
+
+So: **New character** creates a blank entry and redirects into its editor. One form, one code path,
+and the id is the only thing the create step needs to ask for.
+
+### Deliberately not building
+
+- **Search or filter.** Doesn't earn its place until roughly twenty characters, and a visual grid
+  pushes that a long way out.
+- **Drag-and-drop assignment.** Looks impressive, costs a lot, and a dropdown is faster for three
+  slots.
+- **Inline editing in the grid.** That's the current problem in a smaller box.
+
+---
+
 ## Routes
 
 | Route | Purpose |
 |---|---|
-| `GET /setup` | Character library UI — create, edit, assign, upload art |
+| `GET /setup` | Slots: what's assigned where, and save-as-default |
+| `GET /setup/characters` | The library, as a grid of art |
+| `GET /setup/character/<id>` | One character's editor |
 | `POST /setup/character` | Create or update a character |
 | `POST /setup/upload` | Art upload → `static/characters/` |
 | `POST /setup/assign` | Assign a character to a slot |
@@ -443,9 +508,8 @@ Worth doing after the launcher (install stage B), which is higher value for the 
 | `GET /setup/appearance` | Caption sizes and mouth tuning, applied live |
 | `POST /setup/appearance` | Write the appearance block and broadcast it |
 
-Whether `/setup` is a new template or reuses the orphaned `templates/index.html` is worth deciding
-when building it. `index.html` is 307 lines of the old three-panel markup and jQuery, currently
-rendered by no route — possibly more to fight than a clean file.
+`templates/index.html` was not reused — `setup.html` was written fresh. That leaves index.html as
+307 lines of superseded markup no route renders, which should now just be deleted.
 
 ---
 
@@ -543,6 +607,12 @@ of the library's write paths, so it's independent of D–F — see *Appearance s
 Font selection is the part with a hidden cost: choosing a family is easy, but doing it without
 adding a stream-time dependency on Google Fonts means downloading the family locally when it's
 picked. Worth splitting if G gets long — sizes and mouth tuning first, typeface second.
+
+**H. Split `/setup` into slots, library and per-character editor.** See *Splitting `/setup` up*
+above. Independent of everything else and worth doing **before** F or G, since both of those want to
+add sections to a page that's already too long — and each one added first makes the split more work.
+It's also mostly template surgery: the write endpoints don't change, only which page they're reached
+from.
 
 B is worth doing first if you want a win before the setup screen exists.
 

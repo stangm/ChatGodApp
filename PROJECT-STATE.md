@@ -101,7 +101,13 @@ frame is written, because mismatched dimensions make the character jump when it 
 one frame would create exactly that state. Art overwrites in place, which only works because
 `art_url()` cache-busts on mtime.
 
-Stages F (casts) and G (appearance) are not built.
+Stages F (casts), G (appearance) and H (splitting `/setup` up) are not built.
+
+**H should come before F and G.** `/setup` currently puts slots and every character on one page with
+each character fully expanded — fine at three, unusable at fifteen, and the frequently-used slots
+section gets pushed further down every character you add. The plan is `/setup` for slots only,
+`/setup/characters` as a grid of art, and `/setup/character/<id>` as a full-page editor. Both F and
+G want to add sections to that page, so each one built first makes the split more work.
 
 ### Not done
 

@@ -61,7 +61,10 @@ var VoiceStyles = (function () {
         var message = '';
         if (!valid) {
             select.val('none');
-            message = current + " isn't available on this voice - reading it plainly";
+            // Names the style that was dropped and the value now selected, so the
+            // note matches what the dropdown shows. "reading it plainly" described
+            // the effect but left you hunting for which option that was.
+            message = current + " isn't available on this voice - changing to none";
         } else {
             select.val(current);
             if (!available.length) message = 'this voice has no speaking styles';
