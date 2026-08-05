@@ -192,16 +192,21 @@ of the show while it waited is skipped at release time.
 2. **Layer-2 state lives in two managers.** `TTSManager.voices` holds live voice, `DisplayManager`
    holds live captions, for the same slot. They should probably become one slot-state object when
    assignment lands — noted in `display_manager.py`.
-3. **The rest of the character library** — `DESIGN_CHARACTER_LIBRARY.md`, stages F and G. Stage G is an
+3. **Per-style art** — an angry face for `(angry)`, a sad one for `(sad)`. From stream feedback,
+   not scheduled, and Mark is still thinking about the shape. Constraints are written up in
+   `DESIGN_CHARACTER_LIBRARY.md` under *Idea: art that changes with the speaking style* — the one
+   that would be easy to get wrong is that art must follow the **resolved** style, not the requested
+   one, or a dropped prefix puts an angry face over a neutral delivery.
+4. **The rest of the character library** — `DESIGN_CHARACTER_LIBRARY.md`, stages F and G. Stage G is an
    appearance endpoint: typeface, caption sizes and mouth tuning out of source and into
    `characters.json`, applied live over the socket. Independent of F, and the sizes half is cheaper
    than it sounds because every caption size is already a CSS custom property. Font selection is the
    expensive half — doing it without a stream-time dependency on Google Fonts means downloading the
    family locally when it's picked.
-4. ~~A global speech gate~~ — **built**, see above.
-5. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
+5. ~~A global speech gate~~ — **built**, see above.
+6. ~~The launcher script~~ and ~~status panel~~ — **done**. Next in the install design is stage D,
    the **rolling log file**, then E onwards (the wizard) which only pays off at more than one user.
-6. ~~`templates/index.html` orphaned~~ — deleted.
+7. ~~`templates/index.html` orphaned~~ — deleted.
 
 ---
 
@@ -372,6 +377,44 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
   discards every live override. Fast versus safe.
 - **Whose Azure subscription** for the second streamer? Shared key means shared quota and one busy
   night breaks the other person's stream.
+- **ElevenLabs voices alongside Azure?** Parked, not rejected — revisit if the voices themselves
+  become the complaint. Assessed 5 Aug 2026; nothing built.
+
+  The synthesis call is the cheap half. `TTSManager.synthesize()` is a real choke point — text in,
+  wav path out — and ElevenLabs' mp3 goes through the same pydub conversion the gTTS fallback
+  already uses, so `register_audio`, `_wav_seconds`, `SPEECH_OVERLAP_MS` timing and the overlay's
+  WebAudio analysis are all untouched. **No OBS impact**: the browser source contract doesn't
+  change.
+
+  Three things make it more than an afternoon:
+
+  1. **The catalogue is wired into the app, not behind the manager.** `chat_god_app.py` imports
+     `AZURE_VOICES`, `AZURE_VOICE_STYLES`, `VOICE_CATALOG` and `styles_for` directly and builds
+     `VOICE_OPTIONS` / `STYLE_OPTIONS` / `VOICE_STYLE_MAP` at module level; `characters.py`,
+     `control.html`, `character.html` and `voice-styles.js` all consume that shape. Decoupling that
+     is the bulk of the work. Voice ids would need namespacing (`azure:en-US-AriaNeural` /
+     `eleven:21m00Tcm...`) so `characters.json` can name either — which is also what makes this
+     **additive** rather than a swap, with the provider chosen per slot and switchable mid-stream.
+  2. **Styles have no equivalent.** The `(angry)` prefixes, `resolve_style()` and the dropdown
+     narrowing are all built on Azure's `mstts:express-as`. ElevenLabs has continuous
+     `voice_settings` and v3 audio tags — a different axis. Either the style control becomes
+     provider-shaped, or the prefixes map onto settings presets and become approximate. Note that
+     `resolve_style`'s own rationale — substituting a wrong emotion is worse than applying none —
+     argues against faking them.
+  3. **Cost is what actually threatens the "installable by a non-developer" goal.** F0 is 500,000
+     characters/month free. ElevenLabs has no comparable free tier at chat volume: roughly
+     $0.05/1k characters on Flash/Turbo, ~$0.10/1k on Multilingual v2, so the same 500k is about
+     $25–50/month. For a streamer being handed a configured machine that's a card on file and a
+     bill to understand. Also unchecked: **concurrent request limits** against six slots
+     synthesizing at once.
+
+  Two smaller consequences: `usage.py` hardcodes `FREE_TIER_LIMIT = 500_000` with Azure-specific
+  warning text, and the status panel reads `AzureTTSManager.last_result` while `_failure_reason()`
+  parses Azure cancellation details. Both would need a provider-neutral shape.
+
+  **If it's ever picked up**, the version that makes economic sense is a handful of premium
+  signature voices for named characters while chat-at-large stays on Azure — not wholesale
+  replacement. Flash v2.5 rather than Multilingual v2: half the credits, built for realtime.
 
 ---
 
@@ -401,5 +444,6 @@ Then pick from *Not done* above.
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 2 Aug 2026 — character library through stage H built and tested, plus the slot
+Last updated: 5 Aug 2026 — added the ElevenLabs open question (assessed, parked, nothing built).
+Before that, 2 Aug 2026: character library through stage H built and tested, plus the slot
 *In the show* switch. `config.json` remains the one untested path.
