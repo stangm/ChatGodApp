@@ -20,6 +20,7 @@
         {%- for name, font in caption_fonts.items() %}
             --{{ name | replace('_', '-') }}-font: {{ font }}px;
         {%- endfor %}
+            --idle-brightness: {{ idle_brightness }};
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
@@ -47,6 +48,10 @@
 
         // Used only when WebAudio is unavailable: a plain on/off flap.
         var FALLBACK_FLAP_MS = 140;
+
+        // How long a character stays lit after its clip ends, so back-to-back
+        // messages don't flick dark for a frame between them. From characters.py.
+        var SPEAKING_HOLD_MS = {{ speaking_hold_ms }};
 
         $(document).ready(function() {
             var socket = io();
@@ -94,6 +99,37 @@
 
             function setMouth(number, open) {
                 $('#player-slot-' + number).toggleClass('talking', open);
+            }
+
+            // ---- who's speaking ---------------------------------------------
+            //
+            // Separate from `talking`, which flips many times a second as the mouth
+            // follows the waveform. This spans a whole clip: lit while a character
+            // has something to say, dimmed otherwise, so the eye finds the speaker
+            // in a row of six.
+            //
+            // Entirely local to this page -- it only needs to know about its own
+            // slot, which it already does. No socket traffic, no server involvement.
+
+            var holdTimers = {};
+
+            function setSpeaking(number, on) {
+                if (holdTimers[number]) {
+                    clearTimeout(holdTimers[number]);
+                    holdTimers[number] = null;
+                }
+                var slot = $('#player-slot-' + number);
+                if (on) {
+                    slot.addClass('speaking');
+                } else {
+                    // Held briefly rather than dropped immediately: playNext() starts
+                    // the next queued clip the instant this one ends, so dimming at
+                    // once would strobe between consecutive messages.
+                    holdTimers[number] = setTimeout(function() {
+                        slot.removeClass('speaking');
+                        holdTimers[number] = null;
+                    }, SPEAKING_HOLD_MS);
+                }
             }
 
             socket.on('message_send', function(msg) {
@@ -174,9 +210,15 @@
                 var audio = new Audio(item.audio_url);
                 var stop = null;
 
+                setSpeaking(number, true);
+
                 function done() {
                     if (stop) { stop(); stop = null; }
                     setMouth(number, false);   // always land closed
+                    // Cleared here rather than only on 'ended', so a clip that
+                    // errors or is blocked by autoplay can't leave a character lit
+                    // for the rest of the stream.
+                    setSpeaking(number, false);
                     playing = false;
                     playNext();
                 }

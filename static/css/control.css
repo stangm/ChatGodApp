@@ -170,6 +170,10 @@ a.card:hover { border-color: var(--accent); }
 
 .panel.wide { width: 340px; }
 
+.preview { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; }
+.preview button { margin-top: 0; width: auto; }
+.preview-note { font-size: 11px; color: var(--warn); line-height: 1.4; }
+
 .art-frames { display: flex; gap: 10px; margin-bottom: 14px; }
 .art-frames figure { margin: 0; flex: 1; }
 .art-frames figcaption {

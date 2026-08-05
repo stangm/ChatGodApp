@@ -312,6 +312,12 @@ overwrite in place, so re-uploading is safe.
 Changing art can change the browser source height, since it's derived from the art's aspect ratio —
 check the size the control panel reports afterwards.
 
+**Hear this voice** on the character editor synthesizes a short sample so you can audition a voice
+and style before committing — stepping through `cheerful`, `angry`, `sad` on the same voice is the
+only way to know what they actually sound like. It plays through your browser, **not** the overlay,
+which means OBS Desktop Audio would capture it if you audition while live. Each preview spends a few
+characters of Azure quota, counted like any other synthesis.
+
 *Save this voice as the default* on a slot writes whatever you've currently got selected back onto
 the character, which is how a good mid-stream discovery survives instead of evaporating.
 
@@ -354,6 +360,11 @@ calculate it by hand.
 
 **Mouth too twitchy, or barely opening?** The threshold and the minimum gap between mouth swaps
 are both at the top of `templates/overlay.html`, with comments explaining which way to move them.
+
+**Characters dim when they're not speaking**, and come to full brightness while they have something
+to say — with six on screen it's how a viewer finds the speaker. `IDLE_BRIGHTNESS` in `characters.py`
+sets how dark (0.7 by default; 1 disables it), and `SPEAKING_HOLD_MS` is how long a character stays
+lit after finishing, so back-to-back messages don't strobe.
 
 **Caption text too big or too small?** `CAPTIONS` at the top of `characters.py` — one dict, and the
 only place these numbers live:

@@ -138,7 +138,32 @@ case where clearing would annoy people most.
 **Layout stays an OBS concern.** Fixed browser sources can't re-centre when two go dark, so the
 answer for a 6-vs-4 night is two OBS scenes, not app-side reflow.
 
-### Speech gate (**untested**)
+### Voice preview (**untested**)
+
+**Hear this voice** on the character editor. `POST /setup/preview` synthesizes `PREVIEW_TEXT` with
+the selected voice and style and returns JSON; the page plays it. JSON rather than a redirect because
+it's the one action on these pages that shouldn't reload a half-filled form.
+
+**Preview clips use their own cache** (`_preview_cache`, 4) rather than the shared one. Sharing would
+let a burst of auditioning evict speech that's queued but unplayed — the same class of bug as the
+speech gate's backlog, and stepping through a voice's styles is exactly that kind of burst. Separate
+caches remove the question rather than relying on the numbers staying favourable.
+
+**It plays through the operator's browser**, so OBS Desktop Audio would capture it mid-stream. That's
+warned on the page, and it's why the button is on the character editor rather than the control panel.
+Quota is counted automatically, since `usage.record()` fires inside `text_to_audio()`.
+
+### Dimming and the speech gate (**both untested**)
+
+**Dimming** — characters sit at `IDLE_BRIGHTNESS` (0.7) and go to full while speaking. Entirely
+local to each overlay page: it only needs to know about its own slot, so there's no socket traffic
+and no server involvement. `filter: brightness` rather than `opacity`, because opacity would let the
+scene show through a transparent PNG and make the character look ghostly rather than dim. The class
+is cleared in `done()`, which also runs on the error and autoplay-blocked paths, so a failed clip
+can't leave a character lit for the rest of the stream. `SPEAKING_HOLD_MS` (200) stops consecutive
+messages strobing.
+
+### Speech gate
 
 *One speaker at a time* on the control panel. Off by default, matching how the app has always
 behaved. `SpeechPacer` sits after synthesis and releases clips one at a time, timed from each wav's

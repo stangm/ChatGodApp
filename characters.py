@@ -88,6 +88,19 @@ CAPTIONS = {
 BOX_SIZES = {name: spec["box"] for name, spec in CAPTIONS.items()}
 CAPTION_FONTS = {name: spec["font"] for name, spec in CAPTIONS.items()}
 
+# Brightness of a character that isn't currently speaking, 0-1. Whoever is talking
+# goes to full; everyone else sits here.
+#
+# Slight on purpose. Enough that the eye is drawn to the speaker in a row of six,
+# not so much that idle characters look switched off -- which would be confusing
+# next to the "In the show" switch, where being off means something specific.
+IDLE_BRIGHTNESS = 0.7
+
+# How long a character stays lit after finishing. Two messages back to back would
+# otherwise flick dark for a frame between clips, which reads as a glitch rather
+# than as turn-taking.
+SPEAKING_HOLD_MS = 200
+
 
 class Character:
     """One entry in the library, with everything the overlay needs to draw it."""

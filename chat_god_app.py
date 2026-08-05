@@ -74,13 +74,24 @@ _audio_cache = OrderedDict()    # token -> wav path
 _audio_lock = threading.Lock()
 
 
-def register_audio(path):
+# Auditioned clips live in their own small cache rather than the one above.
+#
+# Sharing would let a burst of previews evict speech that's queued but not yet
+# played -- the same class of bug as the speech gate's backlog, and stepping through
+# a voice's styles is exactly the kind of burst that would do it. Separate caches
+# means auditioning can never take a message off the stream.
+PREVIEW_CACHE_SIZE = 4
+_preview_cache = OrderedDict()
+
+
+def register_audio(path, cache=None, limit=AUDIO_CACHE_SIZE):
     """Publish a wav under a one-off token and return it."""
+    cache = _audio_cache if cache is None else cache
     token = uuid.uuid4().hex
     with _audio_lock:
-        _audio_cache[token] = path
-        while len(_audio_cache) > AUDIO_CACHE_SIZE:
-            _, stale = _audio_cache.popitem(last=False)
+        cache[token] = path
+        while len(cache) > limit:
+            _, stale = cache.popitem(last=False)
             try:
                 os.remove(stale)
             except OSError:
@@ -91,7 +102,7 @@ def register_audio(path):
 @app.route("/audio/<token>.wav")
 def audio_file(token):
     with _audio_lock:
-        path = _audio_cache.get(token)
+        path = _audio_cache.get(token) or _preview_cache.get(token)
     if not path or not os.path.exists(path):
         abort(404)
     return send_file(path, mimetype="audio/wav")
@@ -812,6 +823,50 @@ def setup_upload():
                        endpoint="setup_character_page", char_id=char_id)
 
 
+# Short, and written to give a style something to do. "Testing one two three" tells
+# you nothing about the difference between cheerful and sad, which is the whole
+# reason for auditioning -- and short keeps the quota cost of stepping through a
+# voice's styles down.
+PREVIEW_TEXT = "Well now, this is going to be interesting. Are you ready?"
+
+
+@app.route("/setup/preview", methods=["POST"])
+def setup_preview():
+    """
+    Synthesize a sample so a voice and style can be heard before committing.
+
+    Returns JSON rather than redirecting, because this is the one thing on these
+    pages that shouldn't reload the form you're in the middle of filling in.
+
+    **Plays through the operator's browser, not the overlay.** Worth knowing that
+    OBS Desktop Audio would capture it if you audition mid-stream -- which is part of
+    why this lives on the character editor rather than the control panel.
+
+    Counted against the Azure quota like any other synthesis, automatically, since
+    usage.record() fires inside text_to_audio() on success.
+    """
+    if twitchbot is None:
+        return {"error": "The app is still starting up."}, 503
+
+    voice = (request.form.get("voice") or "").strip()
+    style = (request.form.get("style") or NO_STYLE).strip()
+    if not voice:
+        return {"error": "Pick a voice first."}, 400
+
+    try:
+        path = twitchbot.tts_manager.azuretts_manager.text_to_audio(
+            PREVIEW_TEXT, voice, style)
+    except Exception as exc:
+        return {"error": f"Synthesis failed: {exc}"}, 500
+
+    if not path:
+        return {"error": "Nothing came back from Azure."}, 500
+
+    token = register_audio(path, _preview_cache, PREVIEW_CACHE_SIZE)
+    return {"audio_url": f"/audio/{token}.wav",
+            "fell_back": AzureTTSManager.last_result == "fallback"}
+
+
 @app.route("/setup/delete", methods=["POST"])
 def setup_delete():
     char_id = request.form.get("id", "")
@@ -906,7 +961,9 @@ def overlay():
 
     return render_template('overlay.html', numbers=numbers, images=images,
                            character_names=names, flags=flags, active=active,
-                           box_sizes=BOX_SIZES, caption_fonts=CAPTION_FONTS)
+                           box_sizes=BOX_SIZES, caption_fonts=CAPTION_FONTS,
+                           idle_brightness=characters.IDLE_BRIGHTNESS,
+                           speaking_hold_ms=characters.SPEAKING_HOLD_MS)
 
 
 @socketio.event

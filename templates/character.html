@@ -30,6 +30,44 @@
             // style Azure was quietly ignoring.
             refresh($('#default-style').val());
             $('#default-voice').on('change', function() { refresh(); });
+
+            // ---- auditioning ------------------------------------------------
+
+            var previewAudio = null;
+
+            $('#preview').on('click', function() {
+                var button = $(this), note = $('#preview-note');
+                var voice = $('#default-voice').val();
+                if (!voice) {
+                    note.text('Pick a voice first (not "use players.py").');
+                    return;
+                }
+
+                // Disabled while waiting. Azure takes a few hundred milliseconds, so
+                // without this it feels broken and gets clicked again -- which spends
+                // the quota twice for one answer.
+                button.prop('disabled', true).text('Synthesizing...');
+                note.text('');
+
+                $.post('/setup/preview', { voice: voice, style: $('#default-style').val() })
+                    .done(function(data) {
+                        // Stop whatever is already playing, so stepping quickly
+                        // through styles doesn't stack them on top of each other.
+                        if (previewAudio) { previewAudio.pause(); }
+                        previewAudio = new Audio(data.audio_url);
+                        previewAudio.play();
+                        note.text(data.fell_back
+                            ? 'Azure failed - that was the robotic backup voice, not this one.'
+                            : '');
+                    })
+                    .fail(function(xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Preview failed.';
+                        note.text(msg);
+                    })
+                    .always(function() {
+                        button.prop('disabled', false).text('Hear this voice');
+                    });
+            });
         });
     </script>
 </head>
@@ -138,6 +176,18 @@
                     </select>
                 </label>
                 <div class="style-note" id="style-note"></div>
+
+                <!-- Deliberately not a submit button: previewing shouldn't save, and
+                     shouldn't reload a form you're halfway through. -->
+                <div class="preview">
+                    <button type="button" id="preview" class="secondary">Hear this voice</button>
+                    <span class="preview-note" id="preview-note"></span>
+                </div>
+                <p class="field-note">
+                    Plays through this browser, not the overlay &mdash; so <strong>OBS Desktop Audio
+                    would capture it</strong> if you audition while live. Each preview also spends a
+                    few characters of your Azure quota.
+                </p>
 
                 <div class="shows">
                     <span class="label">Show on stream</span>

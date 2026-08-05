@@ -162,6 +162,28 @@ html, body {
    goes empty, which is the point. */
 .player-slot.slot-off { display: none; }
 
+/* ---- dimming whoever isn't speaking -----------------------------------------
+
+   Characters sit slightly dark and come to full brightness while they have
+   something to say. With six on screen it's how a viewer finds the speaker; with
+   three it just adds a bit of life.
+
+   `filter` on the slot rather than `opacity`, because opacity would let the scene
+   behind show through a transparent PNG and make the character look ghostly rather
+   than dim. Brightness leaves the art opaque.
+
+   The transition is what sells it -- an instant switch reads as a flicker. It's also
+   why the class is held briefly after a clip ends (see SPEAKING_HOLD_MS): back-to-
+   back messages would otherwise strobe.
+*/
+
+.player-slot {
+    filter: brightness(var(--idle-brightness));
+    transition: filter 180ms ease-out;
+}
+
+.player-slot.speaking { filter: brightness(1); }
+
 .player-slot.hide-character-name .character-name-box,
 .player-slot.hide-chatter-name  .user-name-box,
 .player-slot.hide-message       .user-message-box {
