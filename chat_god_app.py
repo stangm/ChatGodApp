@@ -736,11 +736,19 @@ def setup_character():
     Flags arrive as checkboxes, which means an unticked box sends nothing at all --
     so they're read as presence rather than value, and every flag has to be listed
     explicitly or unticking one would silently do nothing.
+
+    **Only the fields this form actually renders.** `art_closed` and `art_open` are
+    deliberately absent: they're owned by /setup/upload and this form has no input
+    for them. Listing them here meant `request.form.get` returned "" every time,
+    which upsert reads as "no opinion" and pops -- so saving a name or voice change
+    deleted the art paths from characters.json while leaving the PNGs on disk. The
+    character went blank on stream and the art had to be re-uploaded to put the
+    paths back. upsert merges precisely so a partial form is safe; sending keys the
+    form doesn't edit is what defeated it.
     """
     char_id = request.form.get("id", "")
     fields = {key: request.form.get(key, "")
-              for key in ("display_name", "art_closed", "art_open",
-                          "default_voice", "default_style")}
+              for key in ("display_name", "default_voice", "default_style")}
     fields.update({flag: request.form.get(flag) is not None for flag in DISPLAY_FLAGS})
 
     ok, message = library.upsert(char_id, fields)

@@ -101,6 +101,18 @@ frame is written, because mismatched dimensions make the character jump when it 
 one frame would create exactly that state. Art overwrites in place, which only works because
 `art_url()` cache-busts on mtime.
 
+**Fixed 5 Aug 2026: saving the character editor wiped the art.** Editing a name or voice and
+clicking save blanked `art_closed` and `art_open` in `characters.json` — the character went blank
+on stream and the art had to be re-uploaded. `setup_character()` listed the two art keys in the
+fields it read from the form, but the details form has no input for them (they belong to the
+separate upload form), so `request.form.get` returned `""` on every save and `upsert` reads empty
+as "no opinion" and pops the key. The PNGs were never touched, which is why re-uploading appeared
+to fix it — it only wrote the paths back.
+
+The general shape is worth remembering: **`upsert` merges precisely so a partial form is safe, and
+sending keys the form doesn't render is what defeats that.** Any new field on these pages belongs
+in exactly one route's field list — the one whose form actually has the input.
+
 **Stage H** — `/setup` is three pages, which is what keeps it usable as the library
 grows:
 
@@ -444,6 +456,7 @@ Then pick from *Not done* above.
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 5 Aug 2026 — added the ElevenLabs open question (assessed, parked, nothing built).
+Last updated: 5 Aug 2026 — fixed the character editor wiping art on save; added the ElevenLabs
+open question (assessed, parked, nothing built).
 Before that, 2 Aug 2026: character library through stage H built and tested, plus the slot
 *In the show* switch. `config.json` remains the one untested path.
