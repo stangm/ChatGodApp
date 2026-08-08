@@ -111,9 +111,8 @@ def classify(short_name):
 def fetch(locales, keep_all=False, include_premium=False):
     key, region = setting("azure_key"), setting("azure_region")
     if not key or not region:
-        sys.exit("CHATMOB_AZURE_KEY and CHATMOB_AZURE_REGION must be set (the older "
-                 "CHATGOD_ and AZURE_TTS_ names are still read as a fallback). "
-                 "Reopen your terminal if you only just set them.")
+        sys.exit("CHATMOB_AZURE_KEY and CHATMOB_AZURE_REGION must be set, or put them "
+                 "in config.json. Reopen your terminal if you only just set them.")
 
     config = speechsdk.SpeechConfig(subscription=key, region=region)
     synthesizer = speechsdk.SpeechSynthesizer(speech_config=config, audio_config=None)

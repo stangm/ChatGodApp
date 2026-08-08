@@ -106,13 +106,16 @@ shells. This is the single most common "it works for everyone else" failure, and
 **Check:** `python -c "from config import setting; print(setting('twitch_token')[:10])"` should print
 characters, not an error.
 
-> **Upgrading from an older copy?** Two older generations of name are still read, so nothing you've
-> already set breaks: the `CHATGOD_*` names from before the app was renamed, and before those the
-> unprefixed `TWITCH_ACCESS_TOKEN`, `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY` and `AZURE_TTS_REGION`.
+> **Upgrading from an older copy?** Older names are **no longer read.** If a machine was set up
+> with `TWITCH_ACCESS_TOKEN`, `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY` or `AZURE_TTS_REGION` — or
+> briefly with `CHATGOD_*` — set the four `CHATMOB_` names above instead, or write a
+> `config.json`. Startup will say `Not set:` and name exactly what's missing.
+>
 > The prefix exists because unprefixed names are ones any other Twitch or Azure tool would
-> plausibly also use, and a collision hands your app someone else's credentials while looking like
-> a bad key. The app names whichever older variable it fell back to at startup, so you can migrate
-> at your own pace.
+> plausibly also use, and a collision hands your app someone else's credentials while looking
+> like a bad key. They were read as a fallback until Aug 2026; that was dropped because the
+> startup warning about them turned out to be something people scroll past, which is worse than
+> a failure you have to fix.
 
 ### 4. Azure Speech
 
@@ -425,7 +428,7 @@ character once you have a `characters.json`.
 | `PROJECT-STATE.md` | Where the project currently stands — what works, what's in flight, what wastes your time. Start here if you're picking the project back up |
 | `start.bat` | Double-click launcher. Finds Python, builds the venv on first run, starts the app, opens the control panel |
 | `chatmob_app.py` | Flask app, Twitch bot, socket handlers, routes |
-| `config.py` | Resolves every setting: `CHATMOB_` variable, then `config.json`, then the older `CHATGOD_` and unprefixed names, then a default |
+| `config.py` | Resolves every setting: `CHATMOB_` variable, then `config.json`, then a default |
 | `players.py` | Player config — which slots exist, keyphrases, fallback voices |
 | `characters.py` | Reads and writes `characters.json`, resolves each slot to a character, and works out the OBS browser source size |
 | `characters.example.json` | Template for your own `characters.json` — names, art, default voices, caption switches. Copy it to start. Your copy is gitignored |

@@ -16,34 +16,36 @@ three and keeping them in agreement. Now it is one function.
 
 Resolution order, first non-empty wins:
 
-    CHATMOB_-prefixed variable  ->  config.json  ->  legacy variables  ->  default
+    CHATMOB_-prefixed variable  ->  config.json  ->  default
 
-**There are two generations of legacy name**, tried in that order: the `CHATGOD_`
-names this app used before it was renamed, then the unprefixed names it read before
-that. Both still work. `CHATGOD_` sits above the unprefixed ones for the same reason
-`CHATMOB_` sits above `CHATGOD_`: a prefixed name was unambiguously meant for this
-app, and an unprefixed one is a guess.
+Both layers are unambiguous: a `CHATMOB_`-prefixed variable and a `config.json` next
+to this app are each unmistakably meant for this app and nothing else. The variable
+wins because it's the more specific of the two and the easier to override for one
+run.
 
-**config.json sits above the legacy names, which reverses what the design doc
-originally proposed.** The doc's rule was "environment variables always beat files",
-which is the conventional ordering and reads well until you look at what these
-particular layers mean:
+**There used to be a third layer and it is gone on purpose (7 Aug 2026).** The app
+originally read `AZURE_TTS_KEY`, `AZURE_TTS_REGION`, `TWITCH_ACCESS_TOKEN` and
+`TWITCH_CHANNEL_NAME`, and those were kept as a silent-but-announced fallback,
+briefly joined by a `CHATGOD_` generation from before the rename.
 
-- a `CHATMOB_`-prefixed variable is unambiguously meant for this app
-- `config.json` next to this app is unambiguously meant for this app
-- an unprefixed `AZURE_TTS_KEY` is a *guess* that a generic name refers to us
+Removing them is worth explaining, because "keep the fallback, it costs nothing" is
+the obvious call and it was the wrong one:
 
-Since `config.json` is how a configured machine gets handed to someone, putting the
-ambiguous shim above it means a stale variable from an unrelated tool would silently
-beat the file that was deliberately written for them -- and the resulting failure
-looks like a bad key, which is the exact confusion the prefix exists to prevent. So
-the two deliberate layers go on top and the compatibility shim goes underneath.
+- **The `CHATGOD_` generation was never set on any machine.** It existed in code for
+  five days and protected a population of zero.
+- **The warning did not work.** The unprefixed names were quietly powering the only
+  real install for months. Startup announced it at every single launch, in a block
+  written specifically to be noticed -- and it was scrolled past every time. A
+  fallback that has to be *read about* to be noticed is a fallback that hides
+  misconfiguration in plain sight.
+- **A loud failure is cheaper than a quiet success on the wrong value.** With the
+  layer gone, an old-only machine gets `Not set: CHATMOB_AZURE_KEY` and instructions,
+  which takes a minute to act on. The alternative was an app that worked until the
+  day another Azure tool claimed the same generic name.
 
-**Legacy names still work**, so nothing breaks for a machine configured before the
-rename, or for anyone arriving from DougDoug's upstream README. But `legacy_in_use()`
-reports them and startup says so out loud, naming the one that actually fired: a
-silent fallback would preserve the collision risk while looking like a fix, and after
-a rename it would also hide the fact that the machine is still on the old names.
+So there is nothing to migrate from any more. If a machine turns up configured the
+old way, set the four `CHATMOB_` names or write a `config.json`; both are a two-minute
+job and the startup report will say exactly which one it read.
 
 An empty value counts as unset, in the file as well as the environment. Windows makes
 it easy to end up with a variable set to the empty string, and treating that as
@@ -66,7 +68,6 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.j
 @dataclass(frozen=True)
 class Spec:
     env: str                                   # prefixed name; what the docs tell you to set
-    legacy: tuple                              # older names, newest first; all still honoured
     default: Optional[str] = None
     normalize: Optional[Callable[[str], str]] = None
     secret: bool = False                       # never print the value
@@ -77,13 +78,11 @@ class Spec:
 SPECS = {
     "twitch_token": Spec(
         env="CHATMOB_TWITCH_TOKEN",
-        legacy=("CHATGOD_TWITCH_TOKEN", "TWITCH_ACCESS_TOKEN"),
         secret=True,
         describes="the bot cannot log in to Twitch",
     ),
     "twitch_channel": Spec(
         env="CHATMOB_TWITCH_CHANNEL",
-        legacy=("CHATGOD_TWITCH_CHANNEL", "TWITCH_CHANNEL_NAME"),
         default="silverstagvt",
         # twitchio matches channels case-sensitively, and the common mistake is
         # typing the display name rather than the login name.
@@ -93,13 +92,11 @@ SPECS = {
     ),
     "azure_key": Spec(
         env="CHATMOB_AZURE_KEY",
-        legacy=("CHATGOD_AZURE_KEY", "AZURE_TTS_KEY"),
         secret=True,
         describes="Azure speech fails and playback falls back to gTTS",
     ),
     "azure_region": Spec(
         env="CHATMOB_AZURE_REGION",
-        legacy=("CHATGOD_AZURE_REGION", "AZURE_TTS_REGION"),
         describes="Azure speech fails and playback falls back to gTTS",
     ),
 }
@@ -176,9 +173,8 @@ def resolve(key):
     """
     Return (value, source, name) for one setting.
 
-    source is 'env', 'config', 'legacy' or 'default'; name is where the value
-    actually came from, for the startup report. Callers that only want the value use
-    setting().
+    source is 'env', 'config' or 'default'; name is where the value actually came
+    from, for the startup report. Callers that only want the value use setting().
     """
     spec = SPECS[key]
 
@@ -190,13 +186,6 @@ def resolve(key):
     if value:
         return (spec.normalize(value) if spec.normalize else value), "config", "config.json"
 
-    # Oldest names last, so a machine that sets both the CHATGOD_ name and the
-    # unprefixed one gets the more deliberate of the two.
-    for old in spec.legacy:
-        value = (os.getenv(old) or "").strip()
-        if value:
-            return (spec.normalize(value) if spec.normalize else value), "legacy", old
-
     value = spec.default
     if value is not None and spec.normalize:
         value = spec.normalize(value)
@@ -206,25 +195,6 @@ def resolve(key):
 def setting(key):
     """The resolved value, or None if it isn't set and has no default."""
     return resolve(key)[0]
-
-
-def legacy_in_use():
-    """
-    (current_name, old_name_actually_used) for every setting still coming from an
-    older variable. These work, but they're the collision risk -- and after a rename
-    they're also the thing that will quietly stop being maintained -- so they're
-    worth naming at startup rather than quietly accepting.
-
-    The second element is the name that actually supplied the value, not the whole
-    list of candidates: telling someone to migrate away from a variable they never
-    set is worse than saying nothing.
-    """
-    out = []
-    for key in SPECS:
-        _, source, name = resolve(key)
-        if source == "legacy":
-            out.append((SPECS[key].env, name))
-    return out
 
 
 def missing_required():

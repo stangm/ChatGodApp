@@ -23,7 +23,7 @@ from azure_text_to_speech import AzureTTSManager
 import characters
 from characters import (BOX_SIZES, CAPTION_FONTS, DISPLAY_FLAGS, MAX_ART_BYTES,
                        Library, size_parts)
-from config import legacy_in_use, missing_required, set_command, setting, startup_report
+from config import missing_required, set_command, setting, startup_report
 from display_manager import DisplayManager
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
 from voices_manager import TTSManager
@@ -37,8 +37,8 @@ CHARACTERS_SOURCE = library.source
 display_manager = DisplayManager(CHARACTERS)
 
 # Every setting resolves through config.py: CHATMOB_-prefixed variable, then
-# config.json, then the older CHATGOD_ and unprefixed names, then a built-in
-# default. See that module for why the file outranks the legacy variables.
+# config.json, then a built-in default. See that module for why the older
+# unprefixed names are no longer read.
 TWITCH_CHANNEL_NAME = setting('twitch_channel')
 
 app = Flask(__name__)
@@ -587,8 +587,6 @@ def diagnostics():
 
     lines += ["", "Configuration"]
     lines += [f"  {line.strip()}" for line in startup_report()]
-    for prefixed, legacy in legacy_in_use():
-        lines.append(f"  (using legacy name {legacy} for {prefixed})")
 
     lines += [
         "",
@@ -1339,20 +1337,6 @@ if __name__=='__main__':
     print("\nConfiguration:")
     for line in startup_report():
         print(line)
-
-    # One block however many are legacy. Repeating the same paragraph four times
-    # is how a useful warning becomes something you learn to scroll past.
-    legacy = legacy_in_use()
-    if legacy:
-        print(f"\n{len(legacy)} setting{'s' if len(legacy) > 1 else ''} still using an older "
-              "variable name:")
-        for prefixed, old in legacy:
-            print(f"  {old} -> {prefixed}")
-        print("  These work. CHATGOD_ names are from before the app was renamed, and names\n"
-              "  like AZURE_TTS_KEY are ones another tool could also be using -- a clash\n"
-              "  there looks like a bad key rather than a name collision. Switch when\n"
-              "  convenient:\n"
-              f"  {set_command(legacy[0][0], 'value')}")
 
     missing = missing_required()
     if missing:

@@ -169,7 +169,8 @@ everything.
 still read and still win, so existing installs and anyone who prefers them are unaffected.
 
 ```
-resolution order:  CHATMOB_ variable  →  config.json  →  legacy variable  →  built-in default
+resolution order:  CHATMOB_ variable  →  config.json  →  built-in default
+(the legacy unprefixed layer was removed 7 Aug 2026 — see config.py)
 ```
 
 **Built, all four layers.** `setting()` in `config.py` is the single read point, so this was one

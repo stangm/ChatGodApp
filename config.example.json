@@ -13,8 +13,7 @@
     "the token in CHATMOB_TWITCH_TOKEN if you prefer.",
     "",
     "Resolution order, first non-empty wins:",
-    "  CHATMOB_ environment variable  ->  this file  ->  older CHATGOD_ or unprefixed",
-    "  variable  ->  default",
+    "  CHATMOB_ environment variable  ->  this file  ->  default",
     "",
     "Delete the _comment key if you like; the app ignores keys it doesn't know."
   ],

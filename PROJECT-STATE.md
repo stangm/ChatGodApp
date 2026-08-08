@@ -58,30 +58,23 @@ attorney before filing or printing anything.
 
 Everything except the two things below. The entry point is now `chatmob_app.py` (nothing imported
 it — it was only ever named by `start.bat`'s `set "APP="` and by docs), generated wavs go to
-`%TEMP%\chatmob_audio`, `CHATMOB_VENV` replaces `CHATGOD_VENV` with the old name still honoured,
+`%TEMP%\chatmob_audio`, `CHATMOB_VENV` replaces `CHATGOD_VENV` (the old name is still honoured by
+`start.bat`, which is the one place a stale value can't do any harm),
 and every page title, heading, launcher message and doc says ChatMob.
 
-**The environment prefix is now `CHATMOB_`, and `Spec.legacy` became a tuple.** It used to hold one
-unprefixed name; it now holds *two generations*, tried newest first:
+**The environment prefix is now `CHATMOB_`.** Resolution is three layers:
 
 ```
-CHATMOB_ variable  ->  config.json  ->  CHATGOD_ variable  ->  unprefixed variable  ->  default
+CHATMOB_ variable  ->  config.json  ->  default
 ```
 
-`resolve()` loops the tuple and returns the name that actually supplied the value, so
-`legacy_in_use()` and the startup warning can name the specific variable rather than the whole list
-— telling someone to migrate off a variable they never set is worse than saying nothing. The
-startup warning's wording changed with it: it used to say "unprefixed", which stopped being true the
-moment `CHATGOD_` became a legacy name.
-
-**Nothing about this is silent.** A machine still on `CHATGOD_*` keeps working and gets named at
-startup. That's the whole reason the change was safe to make in one pass.
+The legacy layer was added during the rename and **removed the same day** — see *The legacy
+fallback, and why it went* below.
 
 #### What is still called ChatGod, deliberately
 
 | Kept | Why |
 |---|---|
-| `CHATGOD_*` in `config.py`'s `legacy` tuples | That *is* the compatibility path. Removing them breaks every machine configured before today |
 | The DougDoug attribution and link in `README.md` | Factual credit, and the URL is theirs |
 | `LICENSE` | MIT requires the copyright notice preserved. It never said "Chat God" anyway — it says *Copyright (c) 2024 DougDougGithub* |
 
@@ -99,19 +92,34 @@ One gotcha worth keeping: **a PowerShell window open across the folder rename ke
 directory** and every git command in it fails with *"not a git repository"*, which reads like repo
 damage. Open a fresh terminal instead of trying to `cd` out of it.
 
+#### The legacy fallback, and why it went
+
+Same day as the rename. Resolution is now `CHATMOB_` → `config.json` → default, and **no older
+variable name is read at all**. `Spec.legacy`, the loop in `resolve()`, `legacy_in_use()` and the
+startup migration block are gone.
+
+"Keep the fallback, it costs nothing" was the obvious call and it was wrong, for a reason worth
+remembering:
+
+- **The `CHATGOD_` generation had never been set anywhere.** Auditing the machine found the prefixed
+  names absent at every scope. They existed in code for five days and protected nobody.
+- **This machine had been running on the *unprefixed* names the whole time** —
+  `TWITCH_ACCESS_TOKEN`, `AZURE_TTS_KEY` and friends. The prefix work in early August changed the
+  code and the docs but was never applied to the actual environment, and nothing noticed because the
+  fallback worked.
+- **The warning was there and it failed.** Startup printed a migration block naming every legacy
+  variable, at every launch, for months. It got scrolled past. A safety net that only works if
+  someone reads a paragraph they've already seen a hundred times is not a safety net.
+
+So the trade was made deliberately: an old-only machine now fails loudly with `Not set:
+CHATMOB_AZURE_KEY` and instructions — a minute's work — instead of succeeding quietly on a generic
+name that another Azure tool could claim at any time. **Loud failure over quiet success on the wrong
+value.**
+
+`start.bat` still honours `CHATGOD_VENV`, which is the one exception and a deliberate one: it points
+at a folder, not a credential, so a stale value can misdirect nothing worse than which venv is used.
+
 #### Still outstanding from the rename
-
-**The environment variables.** The machine is still on `CHATGOD_*`, resolving through the legacy
-path. To finish: set the four `CHATMOB_*` names, **delete** the `CHATGOD_*` ones (if both are set,
-`CHATMOB_` silently wins and you can't tell "gone" from "shadowed"), reopen the terminal, restart.
-If the startup block shows no *"still using an older variable name"* section, nothing depends on the
-legacy path any more.
-
-Once that's confirmed, the compatibility code can go: the `CHATGOD_*` entries in the `legacy`
-tuples, and — when the second streamer is set up and the upstream-compatibility promise stops being
-true — `legacy_in_use()`, the startup migration block, `Spec.legacy` itself and about six doc
-paragraphs. Roughly 40 lines across code and docs. Not urgent; the argument for doing it is that
-every extra resolution layer is one more branch to eliminate while diagnosing something mid-stream.
 
 **The name's loose ends.** `.gg`, `.tv`, `.io` and `.app` domains and the Twitch, X, Discord and
 GitHub handles have never been checked. `chatmob.com` is registered but serves an empty page.
@@ -381,19 +389,23 @@ Socket events: `tts`, `pickrandom`, `choose`, `voicename`, `voicestyle` in; `mes
 Resolution order, first non-empty wins:
 
 ```
-CHATMOB_ variable  ->  config.json  ->  CHATGOD_ variable  ->  unprefixed variable  ->  default
+CHATMOB_ variable  ->  config.json  ->  default
 ```
 
 `CHATMOB_TWITCH_TOKEN`, `CHATMOB_TWITCH_CHANNEL`, `CHATMOB_AZURE_KEY`, `CHATMOB_AZURE_REGION`, or the
-same four as `twitch_token` / `twitch_channel` / `azure_key` / `azure_region` in `config.json`. The
-old unprefixed names still work; startup names any it falls back to, and reports which source each
-setting came from.
+same four as `twitch_token` / `twitch_channel` / `azure_key` / `azure_region` in `config.json`.
+Startup reports which source each setting came from. Older names are not read — see *The legacy
+fallback, and why it went*.
 
-**`config.json` deliberately outranks the legacy names**, against the usual "env beats files" rule.
-The prefixed variable and the file are both unambiguously meant for this app; an unprefixed
-`AZURE_TTS_KEY` is a guess that a generic name refers to us. Since the file is how a configured
-machine gets handed over, letting a stale variable from another tool beat it would recreate exactly
-the collision the prefix exists to prevent.
+Both remaining layers are unambiguous — a `CHATMOB_` variable and a `config.json` next to the app
+are each unmistakably meant for this app — so the ordering between them is just specificity, and the
+variable wins as the easier thing to override for one run.
+
+While the legacy layer existed, `config.json` deliberately outranked it, against the usual "env
+beats files" rule: an unprefixed `AZURE_TTS_KEY` is a *guess* that a generic name refers to us, and
+since the file is how a configured machine gets handed over, letting a stale variable from another
+tool beat it would have recreated exactly the collision the prefix exists to prevent. That argument
+is what eventually killed the layer outright.
 
 Nothing writes `config.json` yet — that's the wizard, install stage E. `config.reload()` exists for
 it.
@@ -492,7 +504,7 @@ Don't relitigate these without a reason. Rationale is in the design docs; this i
 | Launcher script, not a PyInstaller build | `DESIGN_GUIDED_INSTALL.md` |
 | Premium Azure voices excluded by default (they bill separately) | `fetch_voices.py` |
 | Legacy env names kept, but announced loudly at startup | `config.py` |
-| Named **ChatMob**; full rename, `CHATGOD_*` kept only as a legacy fallback | *The name*, above |
+| Named **ChatMob**; full rename, and no legacy variable names are read at all | *The name*, above |
 
 ---
 
@@ -559,8 +571,7 @@ ever resolved from environment variables. That matters more than the others beca
 mechanism for handing over a configured machine — worth ten minutes before you set the second
 streamer up:
 
-- Copy `config.example.json` to `config.json`, fill it in, unset the `CHATMOB_*` and `CHATGOD_*`
-  variables, restart.
+- Copy `config.example.json` to `config.json`, fill it in, unset the `CHATMOB_*` variables, restart.
   Startup should print `config.json: found` and `(from config.json)` against each setting.
 - Put a deliberate syntax error in it — the app should print the parse error, say it's ignoring the
   file, and still start.

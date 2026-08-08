@@ -79,11 +79,10 @@ You only hit that path when Azure fails — which is exactly when you don't want
 
 ## Stage 2 — Twitch
 
-> **Already have the old variables set?** Leave them. Both older generations are still read as a
-> fallback — the `CHATGOD_*` names from before the app was renamed, and the unprefixed
-> `TWITCH_ACCESS_TOKEN`, `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION` before those —
-> so an existing install keeps working and you can migrate whenever. The app names every legacy
-> variable it falls back to at startup.
+> **Already have the old variables set?** They won't be used. `TWITCH_ACCESS_TOKEN`,
+> `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION` and the short-lived `CHATGOD_*`
+> names were dropped in Aug 2026 — set the `CHATMOB_` names below instead. If you miss one,
+> startup says `Not set:` and names it.
 >
 > The prefix is there because those names are ones any other Twitch or Azure tool would plausibly
 > also pick. If one does, whichever tool reads the variable gets the other's credentials, and the
