@@ -382,6 +382,30 @@ ask constantly and would otherwise each repeat a None check.
 `settle()` in `test_playback.py` probes through a slot it forces active first, because the
 inactive-slot test switches slot 1 off and a probe through a skipped slot never comes back.
 
+### Architecture review — 7 Aug 2026
+
+`REVIEW_2026-08-07.md` — an independent read of the whole codebase against the standing
+constraints, done with fresh context because most of that day's code was written in one session.
+
+**Verdict: the design holds.** Neither stage F nor G needs a redesign, and `chatmob_app.py` should
+*not* be split — six module-level names are rebound at runtime, so any extracted module would capture
+a stale reference. That's not theoretical; it's the shape of the critical bug the review found.
+
+**It found a broken build.** `TTSManager(CHARACTERS)` was passed where a `SlotStore` was expected —
+same key shape, truthy, so the `is None` guard passed and every synthesis raised inside `SpeechWorker`,
+which swallows it. Captions still drew and the Azure row stayed green from the startup chime. Fixed
+the same day, with an `isinstance` guard and `test_synthesis_wiring()`; the suites had covered both
+sides of synthesis and none of it.
+
+Eleven other findings, ranked in the doc. The four cheapest — a green status row lying about the
+channel, a character edit reverting one restart later, restore running on the wrong thread, and a dead
+bot thread leaving the panel inert — are about fifteen lines between them and are all the same shape:
+**the app is wrong and the panel is green.**
+
+Two are prerequisites rather than tidying: an empty slot can't receive art over the socket, which
+**blocks stage F**; and appearance has no live-apply path on the client, which is the half of **stage G**
+missing from its estimate.
+
 ### Not done
 
 1. ~~**Nothing survives a restart.**~~ — **done 7 Aug 2026**, see *Persistence* below. (The old note

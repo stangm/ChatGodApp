@@ -1474,7 +1474,11 @@ if __name__=='__main__':
               "  Copy characters.example.json to characters.json to name your "
               "characters and control what shows on stream.")
 
-    tts_manager = TTSManager(CHARACTERS)
+    # slot_settings, NOT CHARACTERS. Both are {number: something-with-a-voice},
+    # so passing the wrong one type-checks at the call site and fails per-message
+    # inside the speech worker, where the exception is swallowed to the console
+    # and the status panel stays green. See the isinstance guard in TTSManager.
+    tts_manager = TTSManager(slot_settings)
     tts_manager.play_startup_chime()
     speech_worker = SpeechWorker(tts_manager)
 

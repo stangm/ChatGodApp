@@ -1,5 +1,6 @@
 from azure_text_to_speech import AzureTTSManager
 from players import PLAYER_CONFIG, OBS_WEBSOCKETS_ENABLED
+from slots import SlotSettings
 
 
 class TTSManager:
@@ -37,8 +38,15 @@ class TTSManager:
         to say. Blocking, so call it from the speech worker rather than the bot.
         """
         settings = self.slots.get(user_number)
-        if settings is None:
-            print(f"Unknown player number {user_number!r}; skipping TTS.")
+        # isinstance, not `is None`. The store and the character map are both
+        # keyed by slot number, so handing over the wrong one returns a perfectly
+        # truthy Character and the None check passes -- then every message dies on
+        # an AttributeError inside the speech worker, which swallows it. A guard
+        # that only catches None cannot catch the right container holding the
+        # wrong contents, which is exactly how this shipped once.
+        if not isinstance(settings, SlotSettings):
+            print(f"No live settings for player {user_number!r} "
+                  f"(got {type(settings).__name__}); skipping TTS.")
             return None
         return self.azuretts_manager.text_to_audio(
             text, settings.voice_name, settings.voice_style)

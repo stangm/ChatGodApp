@@ -270,6 +270,54 @@ def test_inactive_slot_skipped():
     A.speech_gate_enabled = False
 
 
+def test_synthesis_wiring():
+    """
+    The one path the whole app exists for, asserted without Azure or a network.
+
+    This exists because it was missing. `TTSManager` was changed to read its voice
+    from `SlotStore`, and the app's own entry point kept passing `CHARACTERS` --
+    also a {number: something-with-a-voice} map, also truthy, so the `is None`
+    guard passed and every message died on an AttributeError inside SpeechWorker,
+    which swallows exceptions to a console nobody watches. Both suites stayed
+    green because neither ever called synthesize().
+
+    So this asserts the wiring rather than the synthesis: that whatever the manager
+    is holding actually answers to `.voice_name`, and that the voice it reaches for
+    is the *live* one rather than the character default.
+    """
+    print("\nsynthesis wiring")
+
+    class FakeAzure:
+        def __init__(self):
+            self.seen = None
+
+        def text_to_audio(self, text, voice=None, style=None):
+            self.seen = (text, voice, style)
+            return make_wav(0.1)
+
+    number = sorted(A.slot_settings.settings)[0]
+    live = A.slot_settings.get(number)
+    live.voice_name = "en-US-TestOnlyNeural"
+    live.voice_style = "cheerful"
+
+    manager = A.TTSManager.__new__(A.TTSManager)     # no Azure SDK, no device
+    manager.azuretts_manager = FakeAzure()
+    manager.slots = A.slot_settings
+
+    check("synthesize returns a clip", bool(manager.synthesize("hello", number)), True)
+    check("and it used the live voice, not the character default",
+          manager.azuretts_manager.seen, ("hello", "en-US-TestOnlyNeural", "cheerful"))
+
+    # The guard that turns "wrong container, right shape" into a skip and a message
+    # instead of an exception nobody sees.
+    manager.slots = A.CHARACTERS
+    check("handed the character map instead, it refuses rather than raising",
+          manager.synthesize("hello", number), None)
+
+    manager.slots = A.slot_settings
+    check("an unknown slot still refuses", manager.synthesize("hello", "999"), None)
+
+
 def test_invariant():
     print("\nthe invariant the pacer's comments depend on")
     # register_audio() deletes the oldest wav past AUDIO_CACHE_SIZE, so a backlog
@@ -287,6 +335,7 @@ def main():
     test_gate_off()
     test_gate_on_and_backlog()
     test_inactive_slot_skipped()
+    test_synthesis_wiring()
     test_invariant()
 
     print(f"\n{len(PASSED)} passed, {len(FAILED)} failed")
