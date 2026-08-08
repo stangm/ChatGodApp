@@ -320,15 +320,74 @@ Two things it deliberately doesn't assert: which specific clip is playing after 
 (whether the thread pops before or during the submitting loop is a genuine race — it asserts the
 survivors are a contiguous newest-run instead), and anything needing a browser.
 
+### Persistence — live settings survive a restart (7 Aug 2026)
+
+`slot_state.py` writes `state.json` beside the app; `slot_snapshot()` and `restore_slot_state()` in
+`chatmob_app.py` gather and scatter. Six fields per slot — voice, style, TTS toggle, the three
+caption toggles and *In the show* — plus the speech gate under a reserved `_app` key.
+
+**Not restored: `current_user` and the pools.** Chat re-joins in seconds via keyphrases, pools
+self-empty after 450s anyway, and putting a name back on screen for someone who left during the
+outage is worse than an empty slot. Settings are what someone chose; a pool is who happened to be
+talking.
+
+**The file is shaped like the merged slot-state object that doesn't exist yet**, so the layer-2
+merge (item 2 below) won't need a migration — only the two gather/scatter functions change.
+
+**Every value is re-validated on load, and the refusals are the point:**
+
+| Situation | What happens |
+|---|---|
+| Slot's character changed while the app was down | All its overrides dropped, new character's defaults win. They were overrides *of a particular character* — The Narrator's voice on Henry Potter is worse than restoring nothing |
+| Saved voice no longer in the catalogue | Voice refused, rest of the slot still restored. Azure renders an unknown voice as a failure at synthesis time, which reads as "TTS is broken" from the one place the cause isn't visible |
+| Saved style not available on the voice | Style refused. Azure renders an unsupported style as neutral *without complaining* |
+| Slot number no longer in `players.py` | Skipped |
+
+Every refusal prints `Using character defaults: <reason>` at startup.
+
+**Writes are debounced by one second** and coalesce — dragging through the caption toggles costs one
+atomic write of the final state, not one per click. `flush()` exists for a clean shutdown. An
+unwritable file is reported once, not once per second, so a full disk can't bury whatever else is
+wrong.
+
+`test_slot_state.py` covers it: 23 checks including a simulated restart and all four refusals.
+
+### The layer-2 merge (7 Aug 2026)
+
+`slots.py` holds `SlotSettings` (one slot's live settings) and `SlotStore` (all of them).
+`display_manager.py` is deleted; `TTSManager` no longer owns a `voices` dict and only *reads* the
+store; `Player` keeps `current_user`, `pool` and `keyphrase` and nothing else.
+
+**The split wasn't along a real seam.** `Player` is *who is talking*; everything else was *how the
+slot behaves*, spread over three files, so "what is slot 3 set to" had three answers and every
+feature touching slot state had to know all three.
+
+**No file migration was needed** — `state.json` was deliberately written in the merged shape a few
+hours earlier, so `slot_snapshot()` and `restore_slot_state()` got shorter and the format didn't
+move. That was the whole point of doing persistence first.
+
+Two things kept deliberately unchanged so the refactor stayed verifiable by eye:
+
+- **`SlotStore.voice_map()`** returns the old `{number: {"name", "style"}}` shape purely for
+  `setup.html`. Changing the model and the template in one commit would have made "did anything
+  visible change?" unanswerable.
+- **Every socket payload keeps its key names** (`active`, `tts_enabled`, `voice_name`, …), so no
+  template or JavaScript was touched at all.
+
+`is_active(number)` exists because the hot paths — the pacer, the message handler, the pool joiner —
+ask constantly and would otherwise each repeat a None check.
+
+**Both suites caught the change**, which is the useful part: `test_playback.py` and
+`test_slot_state.py` both failed on the old API and were updated with it. One trap worth keeping:
+`settle()` in `test_playback.py` probes through a slot it forces active first, because the
+inactive-slot test switches slot 1 off and a probe through a skipped slot never comes back.
+
 ### Not done
 
-1. **Nothing survives a restart.** Voice, style, TTS toggle, caption toggles and assignments are all
-   in-memory and rebuild from character defaults. A crash mid-stream silently reverts everything. The
-   control panel now *shows* this honestly instead of lying about it, which is an improvement but
-   not a fix.
-2. **Layer-2 state lives in two managers.** `TTSManager.voices` holds live voice, `DisplayManager`
-   holds live captions, for the same slot. They should probably become one slot-state object when
-   assignment lands — noted in `display_manager.py`.
+1. ~~**Nothing survives a restart.**~~ — **done 7 Aug 2026**, see *Persistence* below. (The old note
+   here also claimed assignments were in-memory. They never were once stage D landed: `characters.json`
+   has a `slots` key written by `Library.save()`.)
+2. ~~**Layer-2 state lives in three places.**~~ — **done 7 Aug 2026**, see *The layer-2 merge* below.
 3. **Per-style art** — an angry face for `(angry)`, a sad one for `(sad)`. From stream feedback,
    not scheduled, and Mark is still thinking about the shape. Constraints are written up in
    `DESIGN_CHARACTER_LIBRARY.md` under *Idea: art that changes with the speaking style* — the one
@@ -368,10 +427,11 @@ sound natively and no OBS plugin or Move filter is involved any more.
 | `chatmob_app.py` | Flask + SocketIO, routes, socket handlers, the twitchio Bot, SpeechWorker |
 | `config.py` | Every setting read. `setting('azure_key')` and friends |
 | `characters.py` | The library read path, plus the browser-source size arithmetic and `BOX_HEIGHTS` |
-| `display_manager.py` | Live caption visibility per slot |
+| `slots.py` | **Every live per-slot setting**: voice, style, TTS, In the show, captions |
 | `usage.py` | Persisted monthly Azure character count, for the quota warning |
+| `slot_state.py` | Reads and writes `state.json` — the live per-slot settings, debounced and atomic |
 | `players.py` | Which slots exist, keyphrases, fallback voices. Hand-edited |
-| `voices_manager.py` | Per-slot live voice/style; the override layer the control panel edits |
+| `voices_manager.py` | Synthesis, the startup chime and local playback. Reads its voice from `slots.py` |
 | `azure_text_to_speech.py` | Synthesis, style resolution, gTTS fallback |
 | `fetch_voices.py` | Builds `voices.json` from Azure. Run manually |
 | `templates/control.html` | Operator panel. **Never** put this in OBS |
@@ -416,6 +476,7 @@ it.
 | `players.py` | Hand | Yes |
 | `voices.json` | `fetch_voices.py` | No — `voices.default.json` is the tracked fallback |
 | `characters.json` | Hand, for now — setup screen at stage D | No — `characters.example.json` is tracked |
+| `state.json` | `slot_state.py`, on every change | No — per-machine, and regenerable by clicking things |
 
 ---
 

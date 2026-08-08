@@ -429,10 +429,11 @@ character once you have a `characters.json`.
 | `start.bat` | Double-click launcher. Finds Python, builds the venv on first run, starts the app, opens the control panel |
 | `chatmob_app.py` | Flask app, Twitch bot, socket handlers, routes |
 | `config.py` | Resolves every setting: `CHATMOB_` variable, then `config.json`, then a default |
+| `slots.py` | Every live per-slot setting: voice, style, TTS, In the show, captions |
+| `slot_state.py` | Saves and restores those settings in `state.json` so a restart keeps them |
 | `players.py` | Player config — which slots exist, keyphrases, fallback voices |
 | `characters.py` | Reads and writes `characters.json`, resolves each slot to a character, and works out the OBS browser source size |
 | `characters.example.json` | Template for your own `characters.json` — names, art, default voices, caption switches. Copy it to start. Your copy is gitignored |
-| `display_manager.py` | Live caption visibility per slot, what the control panel toggles |
 | `usage.py` | Counts characters sent to Azure, in a gitignored `usage.json` keyed by month, so the panel can warn before the free tier's 500,000 ceiling |
 | `voices_manager.py` | Voice state per player, synthesis calls |
 | `azure_text_to_speech.py` | Azure TTS with a gTTS fallback, and the voice/style catalog |

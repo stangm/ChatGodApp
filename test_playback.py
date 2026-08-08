@@ -86,16 +86,26 @@ def settle(timeout=10.0):
     A.speech_gate_enabled = True
     A.speech_pacer.flush()
 
+    # The probe has to go through a slot that's in the show, or the pacer skips it
+    # at release time and this waits forever for a clip it deliberately dropped.
+    # That's not hypothetical -- the inactive-slot test switches the first slot off
+    # and then calls settle().
+    number = sorted(A.slot_settings.settings)[0]
+    probe_slot = A.slot_settings.get(number)
+    was_active, probe_slot.active = probe_slot.active, True
+
     probe = make_wav(0.01)
-    A.speech_pacer.submit(clip("__settle_probe__"), probe)
+    A.speech_pacer.submit(clip("__settle_probe__", number=number), probe)
     while time.time() < deadline:
         if any(u == "__settle_probe__" for u in users()):
             break
         time.sleep(0.05)
     else:
+        probe_slot.active = was_active
         raise RuntimeError("pacer never went idle; a previous test left it stuck")
 
     time.sleep(0.1)
+    probe_slot.active = was_active
     A.speech_gate_enabled = was_enabled
     EMITTED.clear()
 
@@ -104,7 +114,9 @@ def users():
     return [payload["current_user"] for _, payload in EMITTED]
 
 
-def clip(user, number=1):
+def clip(user, number=None):
+    if number is None:
+        number = sorted(A.slot_settings.settings)[0]
     return {"user_number": number, "current_user": user, "audio_url": "/x.wav"}
 
 
@@ -221,21 +233,20 @@ def test_gate_on_and_backlog():
 def test_inactive_slot_skipped():
     print("\na slot switched out of the show while its clip waited")
 
-    class Slot:
-        def __init__(self, active):
-            self.active = active
-
-    class Bot:
-        players = {1: Slot(False), 2: Slot(True)}
+    # Since the layer-2 merge the pacer asks SlotStore directly rather than
+    # reaching into a Player, so this is now just two settings objects.
+    numbers = sorted(A.slot_settings.settings)
+    off, on = numbers[0], numbers[1]
+    A.slot_settings.get(off).active = False
+    A.slot_settings.get(on).active = True
 
     A.speech_gate_enabled = False
     settle()
-    A.twitchbot = Bot()
     A.speech_gate_enabled = True
 
     short = make_wav(0.05)
-    A.speech_pacer.submit(clip("inactive", number=1), short)
-    A.speech_pacer.submit(clip("active", number=2), short)
+    A.speech_pacer.submit(clip("inactive", number=off), short)
+    A.speech_pacer.submit(clip("active", number=on), short)
     time.sleep(1.5)
 
     check("the inactive slot's clip is never emitted", "inactive" in users(), False)
@@ -246,8 +257,8 @@ def test_inactive_slot_skipped():
     EMITTED.clear()
     started = time.time()
     for i in range(4):
-        A.speech_pacer.submit(clip(f"skipped{i}", number=1), make_wav(3.0))
-    A.speech_pacer.submit(clip("after", number=2), short)
+        A.speech_pacer.submit(clip(f"skipped{i}", number=off), make_wav(3.0))
+    A.speech_pacer.submit(clip("after", number=on), short)
     while "after" not in users() and time.time() - started < 8:
         time.sleep(0.05)
     elapsed = time.time() - started
@@ -255,7 +266,7 @@ def test_inactive_slot_skipped():
           elapsed < 2.0, True)
     print(f"         drained in {elapsed:.2f}s")
 
-    A.twitchbot = None
+    A.slot_settings.get(off).active = True
     A.speech_gate_enabled = False
 
 

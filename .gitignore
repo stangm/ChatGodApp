@@ -55,3 +55,8 @@ usage.json
 # YOUR TWITCH TOKEN AND AZURE KEY IN PLAIN TEXT. Never commit this.
 # config.example.json is the tracked template.
 config.json
+
+# Live slot settings written by slot_state.py -- voice, style, captions, the TTS
+# and In-the-show toggles. Per-machine and regenerable: deleting it just puts every
+# slot back to its character's defaults.
+state.json

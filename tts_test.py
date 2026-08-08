@@ -10,10 +10,14 @@ To test what the stream actually hears, run chatmob_app.py and open an overlay.
 Usage:  python tts_test.py
 """
 
+import characters
 from players import PLAYER_NUMBERS
+from slots import SlotStore
 from voices_manager import TTSManager
 
-tts = TTSManager()
+# The manager reads its voice from the slot store rather than holding one, so this
+# needs a store even though nothing here ever changes a setting.
+tts = TTSManager(SlotStore(characters.load()[0]))
 
 
 def main():

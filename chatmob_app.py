@@ -24,8 +24,9 @@ import characters
 from characters import (BOX_SIZES, CAPTION_FONTS, DISPLAY_FLAGS, MAX_ART_BYTES,
                        Library, size_parts)
 from config import missing_required, set_command, setting, startup_report
-from display_manager import DisplayManager
 from players import PLAYER_CONFIG, DEFAULT_VOICE_STYLE
+import slot_state
+from slots import SlotStore
 from voices_manager import TTSManager
 
 # The character library, and the slot -> Character view derived from it. CHARACTERS
@@ -34,7 +35,8 @@ from voices_manager import TTSManager
 library = Library().load()
 CHARACTERS = library.resolved()
 CHARACTERS_SOURCE = library.source
-display_manager = DisplayManager(CHARACTERS)
+# Every live per-slot setting: voice, style, TTS, In the show, captions.
+slot_settings = SlotStore(CHARACTERS)
 
 # Every setting resolves through config.py: CHATMOB_-prefixed variable, then
 # config.json, then a built-in default. See that module for why the older
@@ -258,8 +260,7 @@ class SpeechPacer:
             # Checked here rather than at submit: a slot can be switched out of the
             # show while its clip is still waiting, and playing it then would put a
             # voice on stream with no character to attach it to.
-            player = twitchbot.players.get(payload['user_number']) if twitchbot else None
-            if player is not None and not player.active:
+            if not slot_settings.is_active(payload['user_number']):
                 continue
 
             socketio.emit('speak', payload)
@@ -365,19 +366,18 @@ def player_state():
     makes the fallback correct rather than merely safe. That window is a moment at
     startup, and the push on connect corrects any page that loaded inside it.
     """
-    manager = twitchbot.tts_manager if twitchbot is not None else None
     state = {}
     for number, config in PLAYER_CONFIG.items():
         player = twitchbot.players.get(number) if twitchbot is not None else None
-        voice = manager.voices.get(number) if manager is not None else None
+        settings = slot_settings.get(number)
         character = CHARACTERS.get(number)
-        flags = display_manager.get(number) or {}
+        flags = slot_settings.display_flags(number)
         state[number] = {
-            "active": player.active if player else True,
-            "tts_enabled": player.tts_enabled if player else True,
+            "active": settings.active if settings else True,
+            "tts_enabled": settings.tts_enabled if settings else True,
             "current_user": (player.current_user if player else None) or "",
-            "voice_name": voice["name"] if voice else config["voice_name"],
-            "voice_style": voice["style"] if voice else DEFAULT_VOICE_STYLE,
+            "voice_name": settings.voice_name if settings else config["voice_name"],
+            "voice_style": settings.voice_style if settings else DEFAULT_VOICE_STYLE,
             "character_name": character.display_name if character else "",
             # Whether the character name box can be shown at all. A character with
             # no name would otherwise offer a checkbox that reserves 54px for an
@@ -435,7 +435,7 @@ def art_url(path):
 def slot_payload(number):
     """Everything the overlay needs to redraw one slot after a change."""
     character = CHARACTERS.get(number)
-    live = display_manager.get(number) or {}
+    live = slot_settings.display_flags(number)
     return {
         'user_number': number,
         'art_closed': art_url(character.art_closed) if character else None,
@@ -467,9 +467,7 @@ def apply_assignment(number):
     if character is None:
         return
 
-    display_manager.reset_to(number, character)
-    if twitchbot is not None:
-        twitchbot.tts_manager.reset_to(number, character)
+    slot_settings.reset_to(number, character)
 
     socketio.emit('art_changed', slot_payload(number))
     socketio.emit('state', player_state())
@@ -533,7 +531,7 @@ def status_report():
     # Only reported when some are off, since "3 of 3" is noise. Worth reporting at
     # all because a slot switched off looks exactly like a slot that's broken.
     off = [n for n, p in (twitchbot.players.items() if twitchbot else [])
-           if not p.active]
+           if not slot_settings.is_active(n)]
     if off:
         rows.append(("Slots", "warn",
                      f"player {', '.join(sorted(off))} switched out of the show -- "
@@ -598,8 +596,9 @@ def diagnostics():
 
     for number, character in CHARACTERS.items():
         label = character.display_name or character.id or "(empty)"
-        voice = twitchbot.tts_manager.voices.get(number) if twitchbot else None
-        live = f"{voice['name']} / {voice['style']}" if voice else "not started"
+        settings = slot_settings.get(number)
+        live = (f"{settings.voice_name} / {settings.voice_style}"
+                if settings else "not started")
         lines.append(f"  player {number}      {label} -- {live}")
 
     return "\n".join(lines)
@@ -669,7 +668,7 @@ def setup():
                            slots=library.slots,
                            resolved=CHARACTERS,
                            characters_source=CHARACTERS_SOURCE,
-                           live=(twitchbot.tts_manager.voices if twitchbot else {}))
+                           live=slot_settings.voice_map())
 
 
 @app.route("/setup/characters")
@@ -732,6 +731,11 @@ def setup_assign():
     ok, message = library.assign(number, char_id)
     if ok:
         apply_assignment(number)
+        # Assignment resets voice, style and captions to the new character's
+        # defaults, so the saved overrides now describe someone who isn't in
+        # this slot any more. Overwrite rather than leave them to be skipped
+        # on the next start.
+        save_slot_state()
     return _setup_done(ok, message)
 
 
@@ -909,15 +913,16 @@ def setup_save_default():
     if character is None or not character.id:
         return _setup_done(False, "That slot has no character to save to.")
 
-    voice = twitchbot.tts_manager.voices.get(number) if twitchbot else None
-    if voice is None:
-        return _setup_done(False, "The bot hasn't started yet.")
+    settings = slot_settings.get(number)
+    if settings is None:
+        return _setup_done(False, "That slot has no live settings to save.")
 
-    fields = {"default_voice": voice["name"], "default_style": voice["style"]}
-    fields.update(display_manager.get(number) or {})
+    fields = {"default_voice": settings.voice_name,
+              "default_style": settings.voice_style}
+    fields.update(settings.display)
     ok, message = library.upsert(character.id, fields)
     return _setup_done(ok, f"{character.display_name or character.id}: "
-                           f"now defaults to {voice['name']}." if ok else message)
+                           f"now defaults to {settings.voice_name}." if ok else message)
 
 
 def _setup_done(ok, message, endpoint="setup", **values):
@@ -960,8 +965,7 @@ def overlay():
         # Rendered as well as pushed over the socket, so a browser-source reload
         # while a slot is switched off comes back blank rather than flashing the
         # character on screen until the next event arrives.
-        player = twitchbot.players.get(number) if twitchbot is not None else None
-        active[number] = player.active if player else True
+        active[number] = slot_settings.is_active(number)
         images[number] = {
             "closed": art_url(character.art_closed) if character else None,
             "open": art_url(character.art_open) if character else None,
@@ -969,7 +973,7 @@ def overlay():
         names[number] = character.display_name if character else ""
         # The flag alone can't decide: a character with no name would render an
         # empty box that still occupies space in the browser source.
-        live = display_manager.get(number) or {}
+        live = slot_settings.display_flags(number)
         flags[number] = dict(live)
         flags[number]["show_character_name"] = bool(
             live.get("show_character_name") and character and character.has_name)
@@ -1051,13 +1055,119 @@ def _player_from(value):
     return player
 
 
+# ---------------------------------------------------------------------------
+# Persisting the live settings
+#
+# All six fields live on SlotSettings now, so these are a straight copy in each
+# direction. The file format didn't change when the three managers merged, which
+# is exactly what shaping it slot-first was for.
+# ---------------------------------------------------------------------------
+
+def slot_snapshot():
+    """Everything worth restoring, in the shape state.json stores it."""
+
+    snapshot = {slot_state.APP_KEY: {"speech_gate": speech_gate_enabled}}
+    for number, settings in slot_settings.settings.items():
+        entry = {
+            # Saved so a slot whose character changed while the app was down can
+            # have its stale overrides dropped rather than applied to a stranger.
+            "character": library.slots.get(number),
+            "voice": settings.voice_name,
+            "style": settings.voice_style,
+            "tts": settings.tts_enabled,
+            "active": settings.active,
+        }
+        for flag in DISPLAY_FLAGS:
+            entry[flag] = bool(settings.display.get(flag, True))
+        snapshot[number] = entry
+    return snapshot
+
+
+def save_slot_state():
+    """Queue a write. Cheap to call from every handler -- writes are debounced."""
+    slot_state.save_soon(slot_snapshot())
+
+
+def restore_slot_state():
+    """
+    Apply saved settings over the character defaults. Called once at startup,
+    before Twitch connects and before any page can read them.
+
+    **Every value is re-validated rather than trusted.** The file is only as fresh
+    as the last run, and `characters.json`, `players.py` and the Azure voice
+    catalogue can all have changed since. A voice that no longer exists would
+    otherwise fail silently at synthesis time, which reads as "TTS is broken" from
+    the one place you can't see the cause.
+    """
+    global speech_gate_enabled
+
+    saved = slot_state.load()
+    if not saved:
+        return
+
+    app_settings = saved.pop(slot_state.APP_KEY, {})
+    if "speech_gate" in app_settings:
+        speech_gate_enabled = bool(app_settings["speech_gate"])
+
+    restored, skipped = [], []
+    for number, entry in saved.items():
+        settings = slot_settings.get(number)
+        if settings is None:
+            skipped.append(f"slot {number} no longer exists")
+            continue
+
+        # A different character means these overrides belong to someone else.
+        if entry.get("character") != library.slots.get(number):
+            skipped.append(f"slot {number} has a different character now")
+            continue
+
+        name = entry.get("voice")
+        if name:
+            if name in AZURE_VOICES:
+                settings.voice_name = name
+            else:
+                skipped.append(f"slot {number}'s voice {name} is no longer available")
+
+        style = entry.get("style")
+        if style:
+            available = styles_for(settings.voice_name)
+            if style == NO_STYLE or style in available or (style == "random" and available):
+                settings.voice_style = style
+            else:
+                # Not an error worth shouting about: Azure renders an unsupported
+                # style as neutral without complaining, so silently keeping it is
+                # the outcome that would confuse someone later.
+                skipped.append(f"slot {number}'s style {style} isn't on {settings.voice_name}")
+
+        if "tts" in entry:
+            settings.tts_enabled = bool(entry["tts"])
+        if "active" in entry:
+            settings.active = bool(entry["active"])
+
+        for flag in DISPLAY_FLAGS:
+            if flag in entry:
+                settings.display[flag] = bool(entry[flag])
+
+        restored.append(number)
+
+    if restored:
+        print(f"\nRestored saved settings for player{'s' if len(restored) > 1 else ''} "
+              f"{', '.join(sorted(restored))}.")
+    for reason in skipped:
+        print(f"  Using character defaults: {reason}")
+
+
 @socketio.on("tts")
 def toggletts(value):
     player = _player_from(value)
     if player is None:
         return
-    player.tts_enabled = bool(value.get('checked'))
-    print(f"TTS for player {player.number}: {player.tts_enabled}")
+    settings = slot_settings.get(player.number)
+    if settings is None:
+        return
+    settings.tts_enabled = bool(value.get('checked'))
+    print(f"TTS for player {player.number}: {settings.tts_enabled}")
+    save_slot_state()
 
 
 @socketio.on("speech_gate")
@@ -1075,6 +1185,7 @@ def toggle_speech_gate(value):
     if not speech_gate_enabled:
         speech_pacer.flush()
     socketio.emit('show_settings', {'speech_gate': speech_gate_enabled})
+    save_slot_state()
 
 
 @socketio.on("slot_active")
@@ -1094,13 +1205,17 @@ def toggle_slot_active(value):
     player = _player_from(value)
     if player is None:
         return
-    player.active = bool(value.get('checked'))
-    print(f"Player {player.number} is {'in' if player.active else 'out of'} the show")
+    settings = slot_settings.get(player.number)
+    if settings is None:
+        return
+    settings.active = bool(value.get('checked'))
+    print(f"Player {player.number} is {'in' if settings.active else 'out of'} the show")
 
     socketio.emit('slot_active', {'user_number': player.number,
-                                  'active': player.active})
+                                  'active': settings.active})
     socketio.emit('state', player_state())
     push_status()
+    save_slot_state()
 
 
 @socketio.on("pickrandom")
@@ -1108,7 +1223,7 @@ def pickrandom(value):
     player = _player_from(value)
     if player is None:
         return
-    if not player.active:
+    if not slot_settings.is_active(player.number):
         print(f"Player {player.number} is out of the show; not picking anyone.")
         return
     twitchbot.random_user(player.number)
@@ -1119,7 +1234,7 @@ def chooseuser(value):
     player = _player_from(value)
     if player is None:
         return
-    if not player.active:
+    if not slot_settings.is_active(player.number):
         print(f"Player {player.number} is out of the show; not assigning anyone.")
         return
     chosen = (value.get('chosen_user') or "").strip().lower()
@@ -1135,7 +1250,7 @@ def choose_voice_name(value):
     if player is None or not value.get('voice_name'):
         return
     voice_name = value['voice_name']
-    reset_to = twitchbot.tts_manager.update_voice_name(player.number, voice_name)
+    reset_to = slot_settings.set_voice_name(player.number, voice_name)
     if reset_to is not None:
         # The style that was selected isn't available on the new voice. Say so,
         # rather than leaving a dropdown showing something that won't happen.
@@ -1144,6 +1259,7 @@ def choose_voice_name(value):
             'voice_style': reset_to,
             'available': styles_for(voice_name),
         })
+    save_slot_state()
 
 
 @socketio.on("display")
@@ -1162,11 +1278,11 @@ def toggle_display(value):
     player = _player_from(value)
     if player is None:
         return
-    if not display_manager.update(player.number, value.get('flag'), value.get('checked')):
+    if not slot_settings.set_display(player.number, value.get('flag'), value.get('checked')):
         return
 
     character = CHARACTERS.get(player.number)
-    flags = display_manager.get(player.number)
+    flags = slot_settings.display_flags(player.number)
     socketio.emit('display_changed', {
         'user_number': player.number,
         # What the overlay should actually draw, which isn't the raw flag: a
@@ -1177,6 +1293,7 @@ def toggle_display(value):
         'show_message': flags.get('show_message'),
         'size_parts': size_parts(character, flags),
     })
+    save_slot_state()
 
 
 @socketio.on("voicestyle")
@@ -1184,7 +1301,8 @@ def choose_voice_style(value):
     player = _player_from(value)
     if player is None or not value.get('voice_style'):
         return
-    twitchbot.tts_manager.update_voice_style(player.number, value['voice_style'])
+    slot_settings.set_voice_style(player.number, value['voice_style'])
+    save_slot_state()
 
 
 @dataclass
@@ -1192,19 +1310,14 @@ class Player:
     number: str                                              # "1", "2", ... matches socket payloads
     keyphrase: str                                           # what a viewer types to join this pool
     current_user: Optional[str] = None                       # whose messages get read out
-    tts_enabled: bool = True
     pool: Dict[str, datetime] = field(default_factory=dict)  # username -> when they last opted in
 
-    # Whether this slot is in the show at all. Distinct from tts_enabled, which
-    # silences a slot that's still on screen, and from an empty character, which
-    # hides a slot that still speaks. This is the single "out of the show" switch:
-    # nothing drawn, nothing spoken, no pool joins, no picking.
-    #
-    # It exists so a scene can be built for six players and run with four without
-    # the app pooling chatters into characters nobody can see, or spending Azure
-    # characters on them. Layout stays an OBS concern -- a second scene -- because
-    # fixed browser sources can't re-centre themselves when two go dark.
-    active: bool = True
+    # This is deliberately only *who is talking*. How the slot behaves -- voice,
+    # style, TTS on/off, In the show, captions -- lives in SlotStore, because it
+    # used to be split across here, TTSManager and DisplayManager and "what is slot
+    # 3 set to" had three answers in three files. Speaker and pool are a genuinely
+    # different axis: assigning a character resets the settings and deliberately
+    # does not touch either of these.
 
 
 class Bot(commands.Bot):
@@ -1254,13 +1367,14 @@ class Bot(commands.Bot):
         # has rendered it, so neither step blocks the bot.
         for player in self.players.values():
             if player.current_user and author == player.current_user:
+                settings = slot_settings.get(player.number)
                 # An inactive slot is out of the show entirely -- nothing drawn,
                 # nothing spoken, and no Azure characters spent on a character
                 # nobody can see.
-                if not player.active:
+                if settings is None or not settings.active:
                     break
                 self.announce(player, message.content)
-                if player.tts_enabled:
+                if settings.tts_enabled:
                     self.speech_worker.submit(player.number, player.current_user, message.content)
                 break
 
@@ -1270,7 +1384,7 @@ class Bot(commands.Bot):
                 # Deliberately ignored while inactive rather than queued: pooling
                 # people for a slot that can't appear leaves them waiting for a turn
                 # that will never come.
-                if not player.active:
+                if not slot_settings.is_active(player.number):
                     break
                 with self._pool_lock:
                     player.pool.pop(author, None)          # re-insert so they land at the end
@@ -1327,6 +1441,9 @@ def startTwitchBot(tts_manager, speech_worker):
     global twitchbot
     asyncio.set_event_loop(asyncio.new_event_loop())
     twitchbot = Bot(tts_manager, speech_worker)
+    # Before run(), which blocks: the Players exist by now, and restoring after
+    # Twitch connects would race the first messages arriving.
+    restore_slot_state()
     twitchbot.run()
 
 
