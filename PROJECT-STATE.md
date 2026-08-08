@@ -88,16 +88,33 @@ startup. That's the whole reason the change was safe to make in one pass.
 Note the license constrained almost nothing: the mandatory footprint was two lines, neither of which
 contains the old product name.
 
-#### Still to do by hand
+#### Done, 7 Aug 2026
 
-1. **Rename the folder** `C:\dev\ChatGodApp` → `C:\dev\ChatMobApp`. **This breaks `.venv`** —
-   `Scripts\activate`, `activate.bat`, `flask.exe` and others embed the absolute path. Delete
-   `.venv` afterwards and let `start.bat` rebuild it, which it already does on first run.
-2. **Rename the GitHub repo** to `stangm/ChatMobApp`, then `git remote set-url origin`. GitHub
-   redirects the old URL indefinitely.
-3. **Restart and read the startup block.** Mark's machine has `CHATGOD_*` set as User variables, so
-   the expected output is four settings resolving via the legacy path plus the migration notice. If
-   it says that, the chain works; switch the variables over at leisure.
+The folder is `C:\dev\ChatMobApp`, the GitHub repo is `stangm/ChatMobApp` with the remote updated,
+`.venv` was rebuilt at the new path, and **the renamed app has started and synthesized** — the run
+regenerated `__pycache__` and touched `usage.json`, which is only written from inside
+`text_to_audio()`. So the whole chain works under the new name.
+
+One gotcha worth keeping: **a PowerShell window open across the folder rename keeps a stale working
+directory** and every git command in it fails with *"not a git repository"*, which reads like repo
+damage. Open a fresh terminal instead of trying to `cd` out of it.
+
+#### Still outstanding from the rename
+
+**The environment variables.** The machine is still on `CHATGOD_*`, resolving through the legacy
+path. To finish: set the four `CHATMOB_*` names, **delete** the `CHATGOD_*` ones (if both are set,
+`CHATMOB_` silently wins and you can't tell "gone" from "shadowed"), reopen the terminal, restart.
+If the startup block shows no *"still using an older variable name"* section, nothing depends on the
+legacy path any more.
+
+Once that's confirmed, the compatibility code can go: the `CHATGOD_*` entries in the `legacy`
+tuples, and — when the second streamer is set up and the upstream-compatibility promise stops being
+true — `legacy_in_use()`, the startup migration block, `Spec.legacy` itself and about six doc
+paragraphs. Roughly 40 lines across code and docs. Not urgent; the argument for doing it is that
+every extra resolution layer is one more branch to eliminate while diagnosing something mid-stream.
+
+**The name's loose ends.** `.gg`, `.tv`, `.io` and `.app` domains and the Twitch, X, Discord and
+GitHub handles have never been checked. `chatmob.com` is registered but serves an empty page.
 
 ### Standing constraints
 
@@ -226,7 +243,7 @@ case where clearing would annoy people most.
 **Layout stays an OBS concern.** Fixed browser sources can't re-centre when two go dark, so the
 answer for a 6-vs-4 night is two OBS scenes, not app-side reflow.
 
-### Voice preview (**untested**)
+### Voice preview (verified 7 Aug 2026)
 
 **Hear this voice** on the character editor. `POST /setup/preview` synthesizes `PREVIEW_TEXT` with
 the selected voice and style and returns JSON; the page plays it. JSON rather than a redirect because
@@ -241,7 +258,7 @@ caches remove the question rather than relying on the numbers staying favourable
 warned on the page, and it's why the button is on the character editor rather than the control panel.
 Quota is counted automatically, since `usage.record()` fires inside `text_to_audio()`.
 
-### Dimming and the speech gate (**both untested**)
+### Dimming and the speech gate (both verified 7 Aug 2026)
 
 **Dimming** — characters sit at `IDLE_BRIGHTNESS` (0.7) and go to full while speaking. Entirely
 local to each overlay page: it only needs to know about its own slot, so there's no socket traffic
@@ -270,6 +287,30 @@ Three decisions that matter more than the feature:
 
 Turning the gate off flushes the backlog rather than stranding it. A clip whose slot was switched out
 of the show while it waited is skipped at release time.
+
+### `test_playback.py` — the gate and the caches, without a stream
+
+Run it with the venv active: `python test_playback.py`. 24 checks, no server, no Twitch, no Azure —
+it imports the real `chatmob_app` and swaps `socketio.emit` for a list, so "what reached the overlay"
+becomes something to assert on.
+
+Covers the gate off and on, the queue cap dropping oldest-first while preserving order, `flush()`,
+the inactive-slot skip **and that the skip costs no sleep** (four dead 3s clips drain in 0.05s rather
+than holding the show for 10.6s), preview eviction never touching queued speech, and an evicted token
+404ing.
+
+**The trap it documents, because it caught the first version of the test itself: an empty queue is
+not an idle thread.** After releasing a 4s clip the pacer sleeps ~3.65s regardless of what's queued,
+and `flush()` empties the queue without waking it — so a helper that waited on the queue returned
+early and the *next* test failed with an unrelated-looking symptom. `settle()` now probes with a clip
+of its own and waits for it to come back out; nothing but a free thread can do that.
+
+Also worth knowing in normal use: **toggling the gate off and back on mid-clip delays the next clip**
+by up to the remainder of the flushed one, for the same reason. Harmless, not worth fixing.
+
+Two things it deliberately doesn't assert: which specific clip is playing after an over-cap burst
+(whether the thread pops before or during the submitting loop is a genuine race — it asserts the
+survivors are a contiguous newest-run instead), and anything needing a browser.
 
 ### Not done
 
@@ -535,7 +576,8 @@ Update it when a branch merges, a stage completes, or a gotcha is found the hard
 orientation doc is worse than none, because it gets believed.
 
 Last updated: 7 Aug 2026 — renamed the app to **ChatMob** throughout, including the environment
-prefix and the entry point; `config.json` resolution verified for the first time (see *The
+prefix, the entry point, the folder and the GitHub repo, and confirmed it runs under the new name;
+`config.json` resolution verified for the first time (see *The
 name* above for why, and for the folder and GitHub renames still to do by hand).
 Before that, 5 Aug 2026: fixed the character editor wiping art on save; added the ElevenLabs
 open question (assessed, parked, nothing built).

@@ -170,6 +170,14 @@ SPEECH_OVERLAP_MS = 350
 # with nothing to explain why.
 SPEECH_QUEUE_MAX = 8
 
+# Asserted rather than left as prose above, because the failure it prevents is
+# silent: clips vanish from the overlay with a 404 nobody sees, and the app looks
+# like it's dropping messages at random. Cheap to check, expensive to diagnose.
+assert SPEECH_QUEUE_MAX * 2 < AUDIO_CACHE_SIZE, (
+    f"SPEECH_QUEUE_MAX ({SPEECH_QUEUE_MAX}) is too close to AUDIO_CACHE_SIZE "
+    f"({AUDIO_CACHE_SIZE}); queued clips would have their wav files deleted "
+    "before they played.")
+
 speech_gate_enabled = SPEECH_GATE_DEFAULT
 
 

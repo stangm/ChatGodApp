@@ -212,7 +212,19 @@
 
                 setSpeaking(number, true);
 
+                var finished = false;
+
                 function done() {
+                    // Latched, because more than one path can reach here for the
+                    // same clip: a 404 -- which is exactly what an evicted clip
+                    // returns -- makes most browsers fire the element's 'error'
+                    // event *and* reject play(). Without this, done() ran twice,
+                    // so playing went false twice and playNext() started two
+                    // clips at once -- overlapping speech that would look like
+                    // the speech gate failing rather than a playback bug.
+                    if (finished) return;
+                    finished = true;
+
                     if (stop) { stop(); stop = null; }
                     setMouth(number, false);   // always land closed
                     // Cleared here rather than only on 'ended', so a clip that
