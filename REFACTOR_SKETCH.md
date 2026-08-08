@@ -5,19 +5,19 @@
 > sketch, there's a note saying so. For how the code works now, read the README.
 
 Goal: adding a 4th player becomes one config entry instead of a find-and-replace across
-`chat_god_app.py`, `voices_manager.py`, and `templates/index.html`.
+`chatmob_app.py`, `voices_manager.py`, and `templates/index.html`.
 
 Current triplication:
 
 | File | Duplicated blocks |
 |---|---|
-| `chat_god_app.py` | 4 socket handlers, `process_message` (2 × 3 branches), `randomUser` (3 branches), 6 class attrs × 3 |
+| `chatmob_app.py` | 4 socket handlers, `process_message` (2 × 3 branches), `randomUser` (3 branches), 6 class attrs × 3 |
 | `voices_manager.py` | voice getters/setters, OBS filter on/off (3 branches each, 6 total) |
 | `templates/index.html` | 3 identical control panels + 8 near-identical jQuery handlers |
 
-Expected: `chat_god_app.py` 222 → ~130 lines, `index.html` 307 → ~120.
+Expected: `chatmob_app.py` 222 → ~130 lines, `index.html` 307 → ~120.
 
-> **Diverged.** `chat_god_app.py` grew instead of shrinking, because the browser-overlay work
+> **Diverged.** `chatmob_app.py` grew instead of shrinking, because the browser-overlay work
 > landed in the same pass and added the audio cache, the `/audio` route and the speech worker.
 > `index.html` was never rewritten — it was left untouched and superseded by two new templates,
 > `control.html` for the operator and `overlay.html` for the stream. The triplication this sketch
@@ -241,7 +241,7 @@ The `textfill` init loop also needs to iterate players rather than name boxes 1/
 
 ## Suggested order & verification
 
-1. Phase 1 + 2 (`chat_god_app.py` only) — biggest win, no template changes, testable alone.
+1. Phase 1 + 2 (`chatmob_app.py` only) — biggest win, no template changes, testable alone.
 2. Phase 3 (`voices_manager.py`).
 3. Phase 4 (template) last — cosmetic, easiest to defer.
 

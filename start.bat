@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
-title Chat God
+title ChatMob
 cd /d "%~dp0"
 
 REM ===========================================================================
-REM  Chat God launcher.
+REM  ChatMob launcher.
 REM
 REM  Double-click this. It finds Python, sets up the virtual environment the
 REM  first time, starts the app and opens the control panel.
@@ -17,15 +17,15 @@ REM  Why the window stays visible: the first run spends two minutes installing
 REM  dependencies, and a hidden window looks like nothing happened. It also
 REM  means there's always a last line to read out when something goes wrong.
 REM
-REM  To use a virtual environment somewhere else, set CHATGOD_VENV to its
+REM  To use a virtual environment somewhere else, set CHATMOB_VENV to its
 REM  folder. Otherwise .venv beside this file is created and used.
 REM ===========================================================================
 
-set "APP=chat_god_app.py"
+set "APP=chatmob_app.py"
 set "URL=http://127.0.0.1:5000/"
 
 echo.
-echo   Chat God
+echo   ChatMob
 echo   --------
 echo.
 
@@ -40,7 +40,8 @@ if not errorlevel 1 goto already_running
 
 REM --- Find a virtual environment ---------------------------------------------
 set "VENV="
-if defined CHATGOD_VENV call :use_if_venv "%CHATGOD_VENV%"
+if defined CHATMOB_VENV call :use_if_venv "%CHATMOB_VENV%"
+if not defined VENV if defined CHATGOD_VENV call :use_if_venv "%CHATGOD_VENV%"
 if not defined VENV call :use_if_venv ".venv"
 if not defined VENV call :use_if_venv "venv"
 if defined VENV goto have_venv
@@ -85,7 +86,7 @@ echo.
 echo   Starting. The control panel will open in your browser in a moment.
 echo.
 echo   Leave this window open while you stream.
-echo   Closing it stops Chat God.
+echo   Closing it stops ChatMob.
 echo.
 
 REM Open the browser from a separate detached window after a delay, so the app
@@ -100,7 +101,7 @@ start "" /min cmd /c "timeout /t 5 /nobreak >nul & start %URL%"
 if errorlevel 1 goto app_failed
 
 echo.
-echo   Chat God has stopped.
+echo   ChatMob has stopped.
 timeout /t 3 /nobreak >nul
 exit /b 0
 
@@ -137,7 +138,7 @@ REM  open. A traceback on screen is a design failure.
 REM ===========================================================================
 
 :already_running
-echo   Chat God is already running.
+echo   ChatMob is already running.
 echo   Opening the control panel.
 start "" %URL%
 timeout /t 3 /nobreak >nul
@@ -146,7 +147,7 @@ exit /b 0
 :no_python
 echo   Python isn't installed, or the version installed can't run this.
 echo.
-echo   Chat God needs Python 3.9 to 3.12. Version 3.13 and newer won't work
+echo   ChatMob needs Python 3.9 to 3.12. Version 3.13 and newer won't work
 echo   yet - some of the pieces it depends on haven't been updated.
 echo.
 echo   Download 3.12 from:
@@ -163,7 +164,7 @@ echo.
 echo   Couldn't create the virtual environment.
 echo.
 echo   The usual cause is this folder being read-only, or antivirus blocking
-echo   it. Moving Chat God somewhere like C:\dev\ChatGodApp usually fixes it.
+echo   it. Moving ChatMob somewhere like C:\dev\ChatMobApp usually fixes it.
 echo.
 pause
 exit /b 1
@@ -181,7 +182,7 @@ exit /b 1
 
 :app_failed
 echo.
-echo   Chat God stopped unexpectedly.
+echo   ChatMob stopped unexpectedly.
 echo.
 echo   If the last lines above mention an address already in use, it's
 echo   already running in another window - close that one first.

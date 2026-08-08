@@ -1,10 +1,10 @@
-# ChatGodApp
+# ChatMob
 
 Reads your Twitch chatters' messages aloud with Azure TTS and animates a character's mouth
 in time with the audio, as an OBS browser source.
 
-Originally written by [DougDoug](https://github.com/DougDougGithub/ChatGodApp), with help from
-Banana. This fork moves the animation and audio into the browser — see
+Originally written as **Chat God** by [DougDoug](https://github.com/DougDougGithub/ChatGodApp),
+with help from Banana. This fork moves the animation and audio into the browser — see
 [What's different in this fork](#whats-different-in-this-fork). You're welcome to adapt or use
 this code for whatever you'd like.
 
@@ -39,7 +39,7 @@ Python 3.9–3.12. On 3.13+ you may hit missing wheels for `azure-cognitiveservi
 install 3.12 alongside and use `py -3.12` below.
 
 ```powershell
-cd path\to\ChatGodApp
+cd path\to\ChatMobApp
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -56,7 +56,7 @@ If PowerShell blocks the activate script:
 
 > **Keep the repo out of OneDrive, Dropbox or Google Drive.** A `.git` directory inside a synced
 > folder produces lock files that can't be deleted, and every git command afterwards fails until you
-> remove them by hand. `C:\dev\ChatGodApp` or similar. The venv doesn't have to live beside the code
+> remove them by hand. `C:\dev\ChatMobApp` or similar. The venv doesn't have to live beside the code
 > either — and note a venv can't be moved once created, since it stores its own absolute path.
 
 ### 2. Credentials — pick one of two ways
@@ -75,10 +75,10 @@ If PowerShell blocks the activate script:
 **Or** set them as environment variables:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_TOKEN", "yourtokenhere", "User")
-[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_CHANNEL", "yourchannel", "User")
-[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_KEY", "your-key-here", "User")
-[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_REGION", "eastus", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_TWITCH_TOKEN", "yourtokenhere", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_TWITCH_CHANNEL", "yourchannel", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_AZURE_KEY", "your-key-here", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_AZURE_REGION", "eastus", "User")
 ```
 
 **The file is easier** — you can see what's in it, edit it, and it works the moment you save. It's
@@ -106,11 +106,13 @@ shells. This is the single most common "it works for everyone else" failure, and
 **Check:** `python -c "from config import setting; print(setting('twitch_token')[:10])"` should print
 characters, not an error.
 
-> **Upgrading from an older copy?** The unprefixed names — `TWITCH_ACCESS_TOKEN`,
-> `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION` — are still read, so nothing you've
-> already set breaks. The prefix exists because those names are ones any other Twitch or Azure tool
-> would plausibly also use, and a collision hands your app someone else's credentials while looking
-> like a bad key. The app names any legacy variable it falls back to at startup.
+> **Upgrading from an older copy?** Two older generations of name are still read, so nothing you've
+> already set breaks: the `CHATGOD_*` names from before the app was renamed, and before those the
+> unprefixed `TWITCH_ACCESS_TOKEN`, `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY` and `AZURE_TTS_REGION`.
+> The prefix exists because unprefixed names are ones any other Twitch or Azure tool would
+> plausibly also use, and a collision hands your app someone else's credentials while looking like
+> a bad key. The app names whichever older variable it fell back to at startup, so you can migrate
+> at your own pace.
 
 ### 4. Azure Speech
 
@@ -198,7 +200,7 @@ That's the whole OBS setup. No plugins, no audio capture source, no filters.
 
 **Double-click `start.bat`.** It finds Python, creates the virtual environment the first time,
 installs what's needed, starts the app and opens the control panel. Run it again and it just starts.
-Leave the window open while you stream; closing it stops Chat God.
+Leave the window open while you stream; closing it stops ChatMob.
 
 If it can't do something it says which thing and what to do about it, and keeps the window open so
 you can read it. Double-clicking it while it's already running just reopens the control panel.
@@ -208,11 +210,11 @@ you can read it. Double-clicking it while it's already running just reopens the 
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python chat_god_app.py
+python chatmob_app.py
 ```
 
 Equivalent, and better when you're changing code — you see the output directly and can Ctrl-C it.
-`start.bat` will reuse a `.venv` or `venv` beside the app, or whatever `CHATGOD_VENV` points at.
+`start.bat` will reuse a `.venv` or `venv` beside the app, or whatever `CHATMOB_VENV` points at.
 
 </details>
 
@@ -232,7 +234,7 @@ toggle TTS per player, all live.
 overlap so it sounds like conversation rather than a walkie-talkie. Off by default — at three
 players overlap reads as liveliness, and it's at five or six that it becomes noise. Busy chat builds
 a backlog, so the oldest waiting message is dropped rather than read a minute late. The tuning
-constants (`SPEECH_OVERLAP_MS`, `SPEECH_QUEUE_MAX`) are at the top of `chat_god_app.py`.
+constants (`SPEECH_OVERLAP_MS`, `SPEECH_QUEUE_MAX`) are at the top of `chatmob_app.py`.
 
 **"In the show"** takes a slot out entirely: nothing drawn, nothing spoken, its keyphrase ignored,
 and no Azure characters spent on it. That's what lets you build one OBS scene for six players and
@@ -401,8 +403,8 @@ character once you have a `characters.json`.
 | Symptom | Cause |
 |---|---|
 | No `Logged in as` line | Token missing or expired, or the terminal was open before you set the env var |
-| Bot connects but ignores you | `CHATGOD_TWITCH_CHANNEL` is wrong or wrong case |
-| "Azure failed, using gTTS instead" | Bad `CHATGOD_AZURE_KEY`, or region as "East US" instead of `eastus` |
+| Bot connects but ignores you | `CHATMOB_TWITCH_CHANNEL` is wrong or wrong case |
+| "Azure failed, using gTTS instead" | Bad `CHATMOB_AZURE_KEY`, or region as "East US" instead of `eastus` |
 | Nothing on **Pick Random** | Pool is empty — someone must type `!player1` first, or the slot is switched out of the show |
 | A player is missing from stream | Check *In the show* on the control panel — the panel dims when a slot is switched out |
 | Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page |
@@ -422,8 +424,8 @@ character once you have a `characters.json`.
 |---|---|
 | `PROJECT-STATE.md` | Where the project currently stands — what works, what's in flight, what wastes your time. Start here if you're picking the project back up |
 | `start.bat` | Double-click launcher. Finds Python, builds the venv on first run, starts the app, opens the control panel |
-| `chat_god_app.py` | Flask app, Twitch bot, socket handlers, routes |
-| `config.py` | Resolves every setting: `CHATGOD_` variable, then the legacy name, then a default |
+| `chatmob_app.py` | Flask app, Twitch bot, socket handlers, routes |
+| `config.py` | Resolves every setting: `CHATMOB_` variable, then `config.json`, then the older `CHATGOD_` and unprefixed names, then a default |
 | `players.py` | Player config — which slots exist, keyphrases, fallback voices |
 | `characters.py` | Reads and writes `characters.json`, resolves each slot to a character, and works out the OBS browser source size |
 | `characters.example.json` | Template for your own `characters.json` — names, art, default voices, caption switches. Copy it to start. Your copy is gitignored |

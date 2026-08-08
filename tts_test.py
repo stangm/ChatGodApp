@@ -5,7 +5,7 @@ Since audio moved to the overlay page, the live app no longer plays anything thr
 the server's speakers. This script still does, so you can check voices and Azure
 credentials on their own.
 
-To test what the stream actually hears, run chat_god_app.py and open an overlay.
+To test what the stream actually hears, run chatmob_app.py and open an overlay.
 
 Usage:  python tts_test.py
 """

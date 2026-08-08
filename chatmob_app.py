@@ -36,8 +36,9 @@ CHARACTERS = library.resolved()
 CHARACTERS_SOURCE = library.source
 display_manager = DisplayManager(CHARACTERS)
 
-# Every setting resolves through config.py: CHATGOD_-prefixed variable, then the
-# legacy unprefixed name, then a built-in default. See that module for why.
+# Every setting resolves through config.py: CHATMOB_-prefixed variable, then
+# config.json, then the older CHATGOD_ and unprefixed names, then a built-in
+# default. See that module for why the file outranks the legacy variables.
 TWITCH_CHANNEL_NAME = setting('twitch_channel')
 
 app = Flask(__name__)
@@ -490,7 +491,7 @@ def status_report():
         rows.append(("Twitch", "unknown", "still starting up"))
     else:
         rows.append(("Twitch", "bad",
-                     f"not logged in -- check CHATGOD_TWITCH_TOKEN, and that "
+                     f"not logged in -- check CHATMOB_TWITCH_TOKEN, and that "
                      f"#{TWITCH_CHANNEL_NAME} is the right channel"))
 
     # -- Azure ----------------------------------------------------------------
@@ -567,7 +568,7 @@ def diagnostics():
     import platform
 
     lines = [
-        "Chat God diagnostics",
+        "ChatMob diagnostics",
         f"  generated   {datetime.now(pytz.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         f"  python      {platform.python_version()} on {platform.system()} {platform.release()}",
         "",
@@ -1335,13 +1336,14 @@ if __name__=='__main__':
     # is how a useful warning becomes something you learn to scroll past.
     legacy = legacy_in_use()
     if legacy:
-        print(f"\n{len(legacy)} setting{'s' if len(legacy) > 1 else ''} still using the older "
-              "unprefixed variable name:")
+        print(f"\n{len(legacy)} setting{'s' if len(legacy) > 1 else ''} still using an older "
+              "variable name:")
         for prefixed, old in legacy:
             print(f"  {old} -> {prefixed}")
-        print("  These work. The prefix exists because names like AZURE_TTS_KEY are ones\n"
-              "  another tool could also be using, and a clash looks like a bad key rather\n"
-              "  than a name collision. Switch when convenient:\n"
+        print("  These work. CHATGOD_ names are from before the app was renamed, and names\n"
+              "  like AZURE_TTS_KEY are ones another tool could also be using -- a clash\n"
+              "  there looks like a bad key rather than a name collision. Switch when\n"
+              "  convenient:\n"
               f"  {set_command(legacy[0][0], 'value')}")
 
     missing = missing_required()

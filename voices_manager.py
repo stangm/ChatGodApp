@@ -129,7 +129,7 @@ class TTSManager:
 
     def play_startup_chime(self):
         try:
-            path = self.azuretts_manager.text_to_audio("Chat God App is now running!")
+            path = self.azuretts_manager.text_to_audio("ChatMob is now running!")
             self.play_locally(path)
         except Exception as exc:
             # A missing audio device shouldn't stop the app from running.

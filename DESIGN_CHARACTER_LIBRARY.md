@@ -85,7 +85,7 @@ that only exists on your disk.
 `display_name` is the character's name as it appears on stream — "Henry Potter", not "wizard". The
 key is an id; the display name is prose and can change without breaking slot references.
 
-Art paths are relative to `static/`, the same convention `chat_god_app.py` already resolves through
+Art paths are relative to `static/`, the same convention `chatmob_app.py` already resolves through
 `url_for('static', ...)`. The overlay route keeps that resolution and changes only where the path
 comes from — the assigned character rather than a filename built from the slot number. (The
 slot-level `image_closed` / `image_open` keys are removed; see *Decided* below.)
@@ -528,7 +528,7 @@ reliable.
 > This applies to **stylesheets too**, which the first version of A2 missed — and the failure is
 > worse than for images. A stale stylesheet doesn't merely look old: the page keeps toggling classes
 > against rules the browser doesn't have, so captions silently stop hiding and new elements render
-> unstyled, with every symptom pointing at the code. `static_v()` in `chat_god_app.py` now stamps
+> unstyled, with every symptom pointing at the code. `static_v()` in `chatmob_app.py` now stamps
 > stylesheet URLs with their mtime; art uploads at stage E should reuse it.
 
 ---
@@ -634,14 +634,14 @@ Install-time configuration, not something the web UI touches — it's set once p
 stream, so it doesn't belong in a character file either.
 
 ```python
-TWITCH_CHANNEL_NAME = setting('twitch_channel')   # CHATGOD_TWITCH_CHANNEL
+TWITCH_CHANNEL_NAME = setting('twitch_channel')   # CHATMOB_TWITCH_CHANNEL
 ```
 
 Keeping the current value as the fallback means existing installs keep working. Setup becomes "set
 four environment variables" with no `.py` edit at all, replacing "set three, then edit line 21."
 It also keeps the channel name out of a public repo.
 
-All four variables since moved behind `config.py` and gained the `CHATGOD_` prefix, with the
+All four variables since moved behind `config.py` and gained the `CHATMOB_` prefix, with the
 unprefixed names still read as a fallback. See the guided-install design for the resolution order.
 
 ### Deleting a character removes the library entry, not the art
@@ -654,7 +654,7 @@ One guard, and it can't surprise you mid-stream. Unassign first, then delete.
 
 ### Slot-level art overrides are removed
 
-`chat_god_app.py` currently allows a slot to override the filename convention:
+`chatmob_app.py` currently allows a slot to override the filename convention:
 
 ```python
 "closed": config.get("image_closed", f"characters/player{number}-closed.png")
@@ -692,3 +692,57 @@ And during stage F:
   and readable.
 - **Where do casts live in the UI?** `/setup` is safe; the control panel is fast. See the mid-stream
   hazard above — this is the decision that section is really about.
+
+---
+
+## Idea: art that changes with the speaking style
+
+**Not designed, not scheduled.** Came from stream feedback: an angry face when someone types
+`(angry)`, a sad one for `(sad)`. Recorded here so the constraints are known when it's picked up,
+because two of them would be easy to get wrong.
+
+**The art must follow the *resolved* style, not the requested one.** A chatter types `(whispering)`,
+the voice doesn't support it, and `resolve_style()` returns none — so keying off the prefix would put
+a whispering face over a completely neutral delivery. Same whenever a style is dropped for any other
+reason. The `speak` payload currently carries only the player, the speaker and the audio URL, so
+**step one is putting the resolved style in that payload** and driving the art from it.
+
+**Sparse, with a fallback to the default face.** Azure has around thirty styles and nobody is drawing
+sixty PNGs; realistically a character gets three or four. So the map should be partial and anything
+missing falls back to the existing art — one rule, and it makes the feature useful at any level of
+effort.
+
+**Additive rather than a restructure.** Keeping `art_closed` / `art_open` as the default and adding
+something like `art_styles: {"angry": {...}}` beside them means every existing character keeps
+working untouched, which is the compatibility guarantee that's held since stage A.
+
+**Preloading matters.** Swapping `src` to a frame the browser hasn't cached gives a blank character
+for a beat — precisely at the moment they start talking. All frames want loading up front.
+
+**Dimensions must match across the whole set**, not just within a pair. A differently-sized angry
+frame makes the character jump whenever they get cross. The pair check from stage E extends
+naturally: validate every frame against the character's default art.
+
+**`random` will change the face every message.** A character defaulting to `random` resolves to a
+different style per line, so the expression would flick between sets constantly. Either delightful or
+exhausting depending on the show, but worth knowing before seeing it live.
+
+### One closed mouth, many open mouths
+
+Mark's idea, and it halves the art — which is the part that would otherwise stop this.
+
+The consequence to weigh: with a shared closed frame, **the emotion is only visible while the mouth
+is open**, and during speech that alternates many times a second. So it works when the emotion lives
+in the *mouth* — a snarl versus a neutral O — and reads as a flicker when it lives in the *face*,
+since raised eyebrows would blink on and off with each mouth swap.
+
+Suggests a middle option: a shared closed frame for most emotions, and a full pair only for the one
+or two where the whole face changes. Which the sparse model above already allows without any extra
+mechanism.
+
+**The real cost is the upload UI, not the logic.** Two file pickers becomes two per emotion, which is
+the clutter problem stage H just solved — so it wants its own section on the character editor, or a
+sub-page per style.
+
+**Worth noting it isn't really about emotions.** The mechanism is "art variants keyed by style", and
+the same code would serve costumes or scene-specific looks.

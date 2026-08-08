@@ -1,4 +1,4 @@
-# ChatGodApp — first-run setup (Windows)
+# ChatMob — first-run setup (Windows)
 
 The README is the reference: what to install, what the URLs are, how to add a player. This is the
 walkthrough — the same ground in order, with a check you can run at the end of each stage so you
@@ -13,7 +13,7 @@ If you've set this up before, use the README and skip this.
 1. **Environment variables don't reach terminals that are already open.** You'll set three of them
    below. Each time, close PowerShell and reopen it. This is the single most common "it worked for
    everyone else" failure, and it looks exactly like a bad token.
-2. **Forgetting `CHATGOD_TWITCH_CHANNEL`** means the bot reads someone else's chat and ignores you
+2. **Forgetting `CHATMOB_TWITCH_CHANNEL`** means the bot reads someone else's chat and ignores you
    entirely. It falls back to a hardcoded channel when the variable is unset, and warns loudly at
    startup — read the first few lines of output.
 3. **Testing the overlay in a normal browser tab gives you silence.** Chrome and Firefox block
@@ -34,7 +34,7 @@ connects to OBS at all by default).
 **1.1 Check your version.** PowerShell, in the repo folder:
 
 ```powershell
-cd C:\dev\ChatGodApp
+cd C:\dev\ChatMobApp
 python --version
 ```
 
@@ -56,7 +56,7 @@ If PowerShell blocks the activate script:
 
 > **A venv can't be moved once created** — `pyvenv.cfg` and the `Scripts\*.exe` shims hold its own
 > absolute path, so relocating the folder breaks it. If you want it elsewhere, create it there:
-> `python -m venv C:\venvs\chatgod`. It doesn't need to live beside the code.
+> `python -m venv C:\venvs\chatmob`. It doesn't need to live beside the code.
 
 **1.3 Install dependencies.**
 
@@ -79,10 +79,11 @@ You only hit that path when Azure fails — which is exactly when you don't want
 
 ## Stage 2 — Twitch
 
-> **Already have the old variables set?** Leave them. The unprefixed names —
-> `TWITCH_ACCESS_TOKEN`, `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION` — are still read
-> as a fallback, so an existing install keeps working and you can migrate whenever. The app names
-> every legacy variable it falls back to at startup.
+> **Already have the old variables set?** Leave them. Both older generations are still read as a
+> fallback — the `CHATGOD_*` names from before the app was renamed, and the unprefixed
+> `TWITCH_ACCESS_TOKEN`, `TWITCH_CHANNEL_NAME`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION` before those —
+> so an existing install keeps working and you can migrate whenever. The app names every legacy
+> variable it falls back to at startup.
 >
 > The prefix is there because those names are ones any other Twitch or Azure tool would plausibly
 > also pick. If one does, whichever tool reads the variable gets the other's credentials, and the
@@ -119,8 +120,8 @@ channels case-sensitively and typing the display name is the usual slip.
 <summary>Environment variables instead</summary>
 
 ```powershell
-[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_TOKEN", "yourtokenhere", "User")
-[Environment]::SetEnvironmentVariable("CHATGOD_TWITCH_CHANNEL", "yourchannel", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_TWITCH_TOKEN", "yourtokenhere", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_TWITCH_CHANNEL", "yourchannel", "User")
 ```
 
 Still fully supported, and a variable beats the file if both are set — handy for pointing a test run
@@ -144,8 +145,8 @@ The app reports which source each setting came from at startup, so there's no gu
 ```
 Configuration:
   config.json: found
-  CHATGOD_TWITCH_TOKEN: set (from config.json)
-  CHATGOD_TWITCH_CHANNEL: silverstagvt (from config.json)
+  CHATMOB_TWITCH_TOKEN: set (from config.json)
+  CHATMOB_TWITCH_CHANNEL: silverstagvt (from config.json)
 ```
 
 ---
@@ -174,8 +175,8 @@ like a bad key:
 Or as variables, if that's the route you took:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_KEY", "your-key-here", "User")
-[Environment]::SetEnvironmentVariable("CHATGOD_AZURE_REGION", "eastus", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_AZURE_KEY", "your-key-here", "User")
+[Environment]::SetEnvironmentVariable("CHATMOB_AZURE_REGION", "eastus", "User")
 ```
 
 **3.4 Test TTS on its own** — the file has a built-in harness, and this isolates Azure from Twitch,
@@ -190,7 +191,7 @@ You should hear a test line through your speakers, then get a prompt to type mor
 "Azure failed, using gTTS instead"**, your key or region is wrong — the code swallows the real Azure
 error, so check both carefully rather than debugging elsewhere. Ctrl+C to exit.
 
-Generated wavs go to `%TEMP%\chatgod_audio`, not the project folder. The live app caps that
+Generated wavs go to `%TEMP%\chatmob_audio`, not the project folder. The live app caps that
 directory at 50 clips and deletes the oldest as it goes; this standalone test doesn't, so if you run
 it a lot you can empty the folder by hand.
 
@@ -307,10 +308,10 @@ Running by hand is equivalent and better when you're changing code:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python chat_god_app.py
+python chatmob_app.py
 ```
 
-Expect a spoken "Chat God App is now running!" and a `Logged in as | yourbotname` line. Then open
+Expect a spoken "ChatMob is now running!" and a `Logged in as | yourbotname` line. Then open
 **<http://127.0.0.1:5000/control>** in a normal browser. That's your operator dashboard — don't add
 it to OBS.
 
@@ -358,8 +359,8 @@ If step 3 gives you text but no sound, check you're listening to OBS and not a b
 | Symptom | Cause |
 |---|---|
 | No `Logged in as` line | Token missing/expired, or the terminal was open before you set the env var |
-| Bot connects but ignores you | `CHATGOD_TWITCH_CHANNEL` still wrong, or wrong case |
-| "Azure failed, using gTTS instead" | Bad `CHATGOD_AZURE_KEY`, or region as "East US" instead of `eastus` |
+| Bot connects but ignores you | `CHATMOB_TWITCH_CHANNEL` still wrong, or wrong case |
+| "Azure failed, using gTTS instead" | Bad `CHATMOB_AZURE_KEY`, or region as "East US" instead of `eastus` |
 | Nothing happens on **Pick Random** | Empty pool — someone must type `!player1` first. The code silently swallows this |
 | Overlay blank in OBS | App isn't running, or the URL has a typo. Right-click the source → *Interact* to see the page and its errors |
 | Overlay shows text but never speaks | You're listening to a browser tab, not OBS (gotcha #3), or the source is muted in OBS's Audio Mixer |

@@ -15,7 +15,7 @@ from config import setting
 # Generated clips live outside the repo. The original wrote them to the working
 # directory with names built from hash(text), which is randomised per run -- so old
 # _Msg*.wav files piled up in the project folder and never matched on a later run.
-AUDIO_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "chatgod_audio")
+AUDIO_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "chatmob_audio")
 os.makedirs(AUDIO_OUTPUT_DIR, exist_ok=True)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -176,7 +176,7 @@ def _failure_reason(result):
 
     lowered = raw.lower()
     if "401" in lowered or "unauthorized" in lowered or "authentication" in lowered:
-        return "key rejected -- check CHATGOD_AZURE_KEY"
+        return "key rejected -- check CHATMOB_AZURE_KEY"
     if "403" in lowered or "forbidden" in lowered:
         return "refused -- wrong region, or the monthly quota is used up"
     if "quota" in lowered or "exceeded" in lowered:

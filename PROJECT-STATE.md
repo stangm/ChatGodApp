@@ -11,8 +11,9 @@ within a month. Anything below that reads like a summary should end in a pointer
 
 ## What this is
 
-A rebuild of DougDoug's Chat God app: Twitch chatters are assigned to on-stream character slots,
-their messages are read aloud by Azure TTS, and an animated character mouths along in OBS.
+**ChatMob.** A rebuild of DougDoug's Chat God app: Twitch chatters are assigned to on-stream
+character slots, their messages are read aloud by Azure TTS, and an animated character mouths along
+in OBS.
 
 The rebuild exists to make it **installable by someone who isn't a developer**, and extensible
 without editing Python. The original required editing source to change a channel name.
@@ -22,6 +23,81 @@ published to strangers. That shapes nearly every install decision: you'll create
 and hand over a configured machine, so a wizard that walks someone through the Azure portal is weeks
 of work with one beneficiary. The recurring cost isn't installation, it's *you being the support
 desk over Discord mid-stream*. Diagnostics beat wizards. See `DESIGN_GUIDED_INSTALL.md`.
+
+### The name
+
+Renamed from Chat God on 7 Aug 2026 — the rebuild has diverged far enough from the original that
+sharing its name misleads, and "Chat God" is DougDoug's to begin with, which gets awkward if this is
+ever promoted to other streamers.
+
+***ChatMob*** was picked over a long list. The reasoning, so it doesn't get relitigated:
+
+- **"Mob" carries two meanings at once** — a crowd, and the gaming sense of an NPC creature that
+  lives in the world. The audience already knows the second one, and creatures-on-screen is what the
+  app does. It also gives useful grammar: *your mob*, *six in the mob*, *a mob slot*.
+- **The trademark field is empty.** No `CHATMOB` marks exist; the nearest are three `CHATMOBILE`
+  registrations in unrelated goods (calling cards, phones, a 1999 software program).
+- **The only name collision is dead** — a *"Chatmob — Chat & Meet All People"* Android app,
+  version 1.0, last updated May 2016, from a shovelware developer. Abandoned, not competing.
+- **Styled `ChatMob`, not `Chatmob`** — the capital M keeps both halves legible.
+
+Rejected, with the reason worth keeping: **Chatterbox** and **ChatStage** are descriptive and so
+unprotectable; **ChatShow** is a dictionary term; **ChatCast** is blocked by a live Nov 2025 filing
+by Chatcast Holdings covering broadcaster messaging apps; **YapChat** sits in the middle of the
+random-stranger webcam-chat genre (yapchat.com since 2004, an active "Meet, Flirt and Cam" app,
+yap.chat) which is not a neighbourhood to share with a streamer tool.
+
+The pattern behind all of those: *chat + an ordinary English word* is always either taken or too
+descriptive to own. Only an unexpected second half survives.
+
+**Not yet checked:** `.gg` / `.tv` / `.io` / `.app` domains and the Twitch, X and Discord handles.
+`chatmob.com` is registered but serves an empty page. None of this is a clearance opinion — get an
+attorney before filing or printing anything.
+
+#### What the rename actually changed
+
+Everything except the two things below. The entry point is now `chatmob_app.py` (nothing imported
+it — it was only ever named by `start.bat`'s `set "APP="` and by docs), generated wavs go to
+`%TEMP%\chatmob_audio`, `CHATMOB_VENV` replaces `CHATGOD_VENV` with the old name still honoured,
+and every page title, heading, launcher message and doc says ChatMob.
+
+**The environment prefix is now `CHATMOB_`, and `Spec.legacy` became a tuple.** It used to hold one
+unprefixed name; it now holds *two generations*, tried newest first:
+
+```
+CHATMOB_ variable  ->  config.json  ->  CHATGOD_ variable  ->  unprefixed variable  ->  default
+```
+
+`resolve()` loops the tuple and returns the name that actually supplied the value, so
+`legacy_in_use()` and the startup warning can name the specific variable rather than the whole list
+— telling someone to migrate off a variable they never set is worse than saying nothing. The
+startup warning's wording changed with it: it used to say "unprefixed", which stopped being true the
+moment `CHATGOD_` became a legacy name.
+
+**Nothing about this is silent.** A machine still on `CHATGOD_*` keeps working and gets named at
+startup. That's the whole reason the change was safe to make in one pass.
+
+#### What is still called ChatGod, deliberately
+
+| Kept | Why |
+|---|---|
+| `CHATGOD_*` in `config.py`'s `legacy` tuples | That *is* the compatibility path. Removing them breaks every machine configured before today |
+| The DougDoug attribution and link in `README.md` | Factual credit, and the URL is theirs |
+| `LICENSE` | MIT requires the copyright notice preserved. It never said "Chat God" anyway — it says *Copyright (c) 2024 DougDougGithub* |
+
+Note the license constrained almost nothing: the mandatory footprint was two lines, neither of which
+contains the old product name.
+
+#### Still to do by hand
+
+1. **Rename the folder** `C:\dev\ChatGodApp` → `C:\dev\ChatMobApp`. **This breaks `.venv`** —
+   `Scripts\activate`, `activate.bat`, `flask.exe` and others embed the absolute path. Delete
+   `.venv` afterwards and let `start.bat` rebuild it, which it already does on first run.
+2. **Rename the GitHub repo** to `stangm/ChatMobApp`, then `git remote set-url origin`. GitHub
+   redirects the old URL indefinitely.
+3. **Restart and read the startup block.** Mark's machine has `CHATGOD_*` set as User variables, so
+   the expected output is four settings resolving via the legacy path plus the migration notice. If
+   it says that, the chain works; switch the variables over at leisure.
 
 ### Standing constraints
 
@@ -240,7 +316,7 @@ sound natively and no OBS plugin or Move filter is involved any more.
 
 | File | Holds |
 |---|---|
-| `chat_god_app.py` | Flask + SocketIO, routes, socket handlers, the twitchio Bot, SpeechWorker |
+| `chatmob_app.py` | Flask + SocketIO, routes, socket handlers, the twitchio Bot, SpeechWorker |
 | `config.py` | Every setting read. `setting('azure_key')` and friends |
 | `characters.py` | The library read path, plus the browser-source size arithmetic and `BOX_HEIGHTS` |
 | `display_manager.py` | Live caption visibility per slot |
@@ -264,10 +340,10 @@ Socket events: `tts`, `pickrandom`, `choose`, `voicename`, `voicestyle` in; `mes
 Resolution order, first non-empty wins:
 
 ```
-CHATGOD_ variable  ->  config.json  ->  legacy unprefixed variable  ->  default
+CHATMOB_ variable  ->  config.json  ->  CHATGOD_ variable  ->  unprefixed variable  ->  default
 ```
 
-`CHATGOD_TWITCH_TOKEN`, `CHATGOD_TWITCH_CHANNEL`, `CHATGOD_AZURE_KEY`, `CHATGOD_AZURE_REGION`, or the
+`CHATMOB_TWITCH_TOKEN`, `CHATMOB_TWITCH_CHANNEL`, `CHATMOB_AZURE_KEY`, `CHATMOB_AZURE_REGION`, or the
 same four as `twitch_token` / `twitch_channel` / `azure_key` / `azure_region` in `config.json`. The
 old unprefixed names still work; startup names any it falls back to, and reports which source each
 setting came from.
@@ -292,7 +368,7 @@ it.
 
 ## Things that will waste your time
 
-**The repo lives at `C:\dev\ChatGodApp`, deliberately outside OneDrive.** It used to sit in
+**The repo lives at `C:\dev\ChatMobApp`, deliberately outside OneDrive.** It used to sit in
 `OneDrive\scripts\`, and a `.git` directory inside a synced folder caused three separate problems in
 one session: `.git/index.lock` files that couldn't be removed (blocking every subsequent git
 command), sync churn over `.venv`, and ref directories held open during branch deletion. All three
@@ -375,6 +451,7 @@ Don't relitigate these without a reason. Rationale is in the design docs; this i
 | Launcher script, not a PyInstaller build | `DESIGN_GUIDED_INSTALL.md` |
 | Premium Azure voices excluded by default (they bill separately) | `fetch_voices.py` |
 | Legacy env names kept, but announced loudly at startup | `config.py` |
+| Named **ChatMob**; full rename, `CHATGOD_*` kept only as a legacy fallback | *The name*, above |
 
 ---
 
@@ -400,7 +477,7 @@ Design docs carry the full list. The ones that need Mark's judgement rather than
 
   Three things make it more than an afternoon:
 
-  1. **The catalogue is wired into the app, not behind the manager.** `chat_god_app.py` imports
+  1. **The catalogue is wired into the app, not behind the manager.** `chatmob_app.py` imports
      `AZURE_VOICES`, `AZURE_VOICE_STYLES`, `VOICE_CATALOG` and `styles_for` directly and builds
      `VOICE_OPTIONS` / `STYLE_OPTIONS` / `VOICE_STYLE_MAP` at module level; `characters.py`,
      `control.html`, `character.html` and `voice-styles.js` all consume that shape. Decoupling that
@@ -441,7 +518,8 @@ ever resolved from environment variables. That matters more than the others beca
 mechanism for handing over a configured machine — worth ten minutes before you set the second
 streamer up:
 
-- Copy `config.example.json` to `config.json`, fill it in, unset the `CHATGOD_*` variables, restart.
+- Copy `config.example.json` to `config.json`, fill it in, unset the `CHATMOB_*` and `CHATGOD_*`
+  variables, restart.
   Startup should print `config.json: found` and `(from config.json)` against each setting.
 - Put a deliberate syntax error in it — the app should print the parse error, say it's ignoring the
   file, and still start.
@@ -456,7 +534,10 @@ Then pick from *Not done* above.
 Update it when a branch merges, a stage completes, or a gotcha is found the hard way. A stale
 orientation doc is worse than none, because it gets believed.
 
-Last updated: 5 Aug 2026 — fixed the character editor wiping art on save; added the ElevenLabs
+Last updated: 7 Aug 2026 — renamed the app to **ChatMob** throughout, including the environment
+prefix and the entry point; `config.json` resolution verified for the first time (see *The
+name* above for why, and for the folder and GitHub renames still to do by hand).
+Before that, 5 Aug 2026: fixed the character editor wiping art on save; added the ElevenLabs
 open question (assessed, parked, nothing built).
 Before that, 2 Aug 2026: character library through stage H built and tested, plus the slot
 *In the show* switch. `config.json` remains the one untested path.

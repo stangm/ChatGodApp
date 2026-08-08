@@ -92,6 +92,10 @@ class OBSWebsocketsManager:
 
 if __name__ == '__main__':
 
+    # Hand-run demo of the class above; the app never executes this block.
+    # The scene and filter names are examples from the original author's OBS
+    # setup and will not exist in yours -- edit them before running it.
+
     print("Connecting to OBS Websockets")
     obswebsockets_manager = OBSWebsocketsManager()
 
@@ -115,10 +119,10 @@ if __name__ == '__main__':
     obswebsockets_manager.set_scene('*** Mid Monitor')
 
     print("Changing visibility on scroll filter and Audio Move filter \n\n")
-    obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - Chat God", True)
+    obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - ChatMob", True)
     obswebsockets_manager.set_filter_visibility("Middle Monitor", "DS3 - Scroll", True)
     time.sleep(3)
-    obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - Chat God", False)
+    obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - ChatMob", False)
     obswebsockets_manager.set_filter_visibility("Middle Monitor", "DS3 - Scroll", False)
 
     print("Getting a text source's current text! \n\n")

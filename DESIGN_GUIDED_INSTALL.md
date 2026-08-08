@@ -87,7 +87,7 @@ minimised or hidden, and put anything worth reading in the browser.
 
 > **Known trap for whoever builds this.** Flask-SocketIO refuses to start the Werkzeug server when
 > `sys.stdin` isn't a TTY — it raises "The Werkzeug web server is not designed to run in production."
-> Running `python chat_god_app.py` in a terminal is fine, which is why nothing has hit this yet. A
+> Running `python chatmob_app.py` in a terminal is fine, which is why nothing has hit this yet. A
 > launcher that hides the console, uses `pythonw`, or runs the app detached will trip it immediately
 > and look like a crash on startup. The fix is `socketio.run(app, allow_unsafe_werkzeug=True)`, which
 > is fine here: this only ever serves localhost.
@@ -169,7 +169,7 @@ everything.
 still read and still win, so existing installs and anyone who prefers them are unaffected.
 
 ```
-resolution order:  CHATGOD_ variable  →  config.json  →  legacy variable  →  built-in default
+resolution order:  CHATMOB_ variable  →  config.json  →  legacy variable  →  built-in default
 ```
 
 **Built, all four layers.** `setting()` in `config.py` is the single read point, so this was one
@@ -179,7 +179,7 @@ function in one file rather than an edit to three modules that then have to agre
 original rule was "environment variables always beat files" — conventional, and it reads fine until
 you look at what these layers actually mean:
 
-- a `CHATGOD_`-prefixed variable is unambiguously meant for this app
+- a `CHATMOB_`-prefixed variable is unambiguously meant for this app
 - `config.json` sitting next to the app is unambiguously meant for this app
 - an unprefixed `AZURE_TTS_KEY` is a *guess* that a generic name refers to us
 
@@ -307,7 +307,7 @@ activation policy, no wrong-venv confusion.
 > installation, so that stays a developer step.
 >
 > The Werkzeug TTY trap below was real and was hit as predicted; `allow_unsafe_werkzeug=True` is now
-> in `chat_god_app.py`.
+> in `chatmob_app.py`.
 
 **C. Status panel — done.** Five rows at the top of the control panel: Twitch, Azure, Quota, Voices,
 Overlay. Rendered server-side and pushed over the socket, since the two rows that change after load —
