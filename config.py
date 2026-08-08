@@ -83,12 +83,22 @@ SPECS = {
     ),
     "twitch_channel": Spec(
         env="CHATMOB_TWITCH_CHANNEL",
-        default="silverstagvt",
+        # **No default, deliberately.** This used to fall back to one specific
+        # streamer's channel, which is the one value that is wrong for every
+        # install except the machine it was written on. Forgetting it there
+        # produced a bot that connected *successfully* to someone else's chat,
+        # with a green status row naming a plausible channel, and no keyphrase
+        # ever matching -- a green lie, which is the exact failure mode the
+        # legacy-variable fallback was removed for.
+        #
+        # It's a per-install value set once at setup, so there is no universal
+        # default that could be right. Absent means absent.
+        default=None,
         # twitchio matches channels case-sensitively, and the common mistake is
         # typing the display name rather than the login name.
         normalize=str.lower,
-        required=False,
-        describes="the bot reads the wrong channel",
+        required=True,
+        describes="the bot has no channel to read",
     ),
     "azure_key": Spec(
         env="CHATMOB_AZURE_KEY",

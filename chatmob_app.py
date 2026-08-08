@@ -62,6 +62,13 @@ twitchbot = None
 # startup has printed everything else and looked fine.
 twitch_nick = None
 
+# Why the bot thread stopped, if it did. Without this, a Bot() that raises leaves
+# twitchbot as None forever, so the status row says "still starting up" for the rest
+# of the session and every socket handler quietly returns -- a panel that looks alive
+# with controls that do nothing. "Unknown" is the right answer for the first two
+# seconds and a lie after that.
+bot_thread_error = None
+
 # socket id -> which overlay players that page is showing. The control panel needs
 # to know that OBS is actually connected, because a browser source pointed at the
 # wrong URL looks identical to one that's working until nobody speaks.
@@ -490,9 +497,17 @@ def status_report():
     rows = []
 
     # -- Twitch ---------------------------------------------------------------
-    if twitch_nick:
+    if not TWITCH_CHANNEL_NAME:
+        rows.append(("Twitch", "bad",
+                     "CHATMOB_TWITCH_CHANNEL isn't set, so there's no channel to "
+                     "read. Put it in config.json or set the variable, then restart."))
+    elif twitch_nick:
         rows.append(("Twitch", "ok",
                      f"connected as {twitch_nick}, reading #{TWITCH_CHANNEL_NAME}"))
+    elif bot_thread_error:
+        rows.append(("Twitch", "bad",
+                     f"the bot thread stopped: {bot_thread_error}. Every control on "
+                     "this panel is inactive until the app is restarted."))
     elif twitchbot is None:
         rows.append(("Twitch", "unknown", "still starting up"))
     else:
@@ -769,6 +784,11 @@ def setup_character():
         for number, assigned in library.slots.items():
             if assigned == char_id:
                 apply_assignment(number)
+        # apply_assignment() resets the slot to the character's *new* defaults, so
+        # the saved overrides now describe the old ones -- under the same character
+        # id, which means restore's "different character" guard won't catch them
+        # and the edit silently reverts on the next start.
+        save_slot_state()
     return _setup_done(ok, message, endpoint="setup_character_page", char_id=char_id)
 
 
@@ -834,6 +854,9 @@ def setup_upload():
     for number, assigned in library.slots.items():
         if assigned == char_id:
             apply_assignment(number)
+    # Same reason as setup_character(): the reset has to reach state.json or it
+    # only lasts until the next restart.
+    save_slot_state()
 
     size = reference or next(iter(sizes.values()))
     note = f" ({size[0]}x{size[1]})" if size else ""
@@ -1029,6 +1052,24 @@ def overlay_here(value):
     overlay_clients[request.sid] = list(numbers) if numbers else []
     print(f"Overlay connected for player(s) {', '.join(overlay_clients[request.sid]) or '?'}")
     push_status()
+
+    # Reply with this page's current truth.
+    #
+    # **A browser source does not reload when the app restarts** -- socket.io just
+    # reconnects the existing page. So without this, an overlay that outlived a
+    # restart keeps drawing whatever it had: a character the server no longer has
+    # in that slot, or one it now considers out of the show. It will never speak,
+    # never update and never dim, which is indistinguishable from the app being
+    # broken. The same gap swallowed any hand-edit to characters.json between runs.
+    #
+    # Only two events, both of which this page already handles, and `emit()` inside
+    # a handler goes to the caller alone -- so no other overlay is disturbed and no
+    # new protocol exists to keep in sync.
+    for number in overlay_clients[request.sid]:
+        if number in PLAYER_CONFIG:
+            emit('art_changed', slot_payload(number))
+            emit('slot_active', {'user_number': number,
+                                 'active': slot_settings.is_active(number)})
 
 
 @socketio.on("disconnect")
@@ -1438,13 +1479,26 @@ class Bot(commands.Bot):
 
 
 def startTwitchBot(tts_manager, speech_worker):
-    global twitchbot
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    twitchbot = Bot(tts_manager, speech_worker)
-    # Before run(), which blocks: the Players exist by now, and restoring after
-    # Twitch connects would race the first messages arriving.
-    restore_slot_state()
-    twitchbot.run()
+    """
+    Construct and run the bot. Blocks, so it gets its own thread.
+
+    **Everything is caught**, because this thread dying silently is the worst
+    failure the app has: twitchbot stays None, so `_player_from()` rejects every
+    socket event and Pick Random, Choose user, TTS, In the show, voice and style
+    all stop working at once -- on a panel that still looks connected. A traceback
+    scrolling past in a console nobody is watching is not a diagnosis.
+    """
+    global twitchbot, bot_thread_error
+    try:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        twitchbot = Bot(tts_manager, speech_worker)
+        twitchbot.run()
+    except Exception as exc:
+        bot_thread_error = f"{type(exc).__name__}: {exc}"
+        print(f"\nThe Twitch bot thread stopped: {bot_thread_error}\n"
+              "  The control panel will load but none of its controls will work.\n"
+              "  Fix the cause and restart the app.")
+        push_status()
 
 
 if __name__=='__main__':
@@ -1482,15 +1536,35 @@ if __name__=='__main__':
     tts_manager.play_startup_chime()
     speech_worker = SpeechWorker(tts_manager)
 
+    # Here rather than on the bot thread, which is where it used to live.
+    #
+    # It no longer touches twitchbot or Player at all -- only slot_settings,
+    # library.slots and the voice catalogue -- so the old "the Players exist by
+    # now" reason had stopped being true. Restoring over there meant Flask could
+    # start serving while another thread was still mutating the settings, and a
+    # page that connected inside that window got pre-restore values from `connect`,
+    # which fires once and is never corrected. It was also skipped entirely
+    # whenever the bot thread failed to start.
+    restore_slot_state()
+
     print(f"\nReading Twitch channel: #{TWITCH_CHANNEL_NAME}")
     print(f"Control panel: http://127.0.0.1:5000/")
     for number in PLAYER_CONFIG:
         print(f"Overlay player {number}: http://127.0.0.1:5000/overlay?player={number}")
     print()
 
-    # Creates and runs the twitchio bot on a separate thread
-    bot_thread = threading.Thread(target=startTwitchBot, args=(tts_manager, speech_worker), daemon=True)
-    bot_thread.start()
+    # Creates and runs the twitchio bot on a separate thread.
+    #
+    # Skipped outright with no channel: twitchio would be handed [None] and fail
+    # somewhere less legible. The rest of the app still starts -- the panel, the
+    # overlays and /setup all work, and the status row says exactly what's missing,
+    # which is more useful ten minutes before a stream than refusing to run.
+    if TWITCH_CHANNEL_NAME:
+        bot_thread = threading.Thread(target=startTwitchBot, args=(tts_manager, speech_worker), daemon=True)
+        bot_thread.start()
+    else:
+        print("\nNot starting the Twitch bot: no channel is set.\n"
+              "  Everything else still runs, so you can set characters up meanwhile.")
 
     # allow_unsafe_werkzeug is required, not optional, for anything but a terminal.
     #

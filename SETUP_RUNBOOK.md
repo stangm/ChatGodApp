@@ -129,6 +129,10 @@ at a different channel. **Close and reopen PowerShell afterwards** (gotcha #1); 
 
 </details>
 
+`twitch_channel` is the lowercase name from your Twitch URL, not your display name. There is no
+default — leave it out and startup says `Not set: CHATMOB_TWITCH_CHANNEL` and skips the bot rather
+than reading somebody else's chat.
+
 **2.3 Check it.** Both should come back non-empty:
 
 ```powershell

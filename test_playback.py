@@ -318,6 +318,95 @@ def test_synthesis_wiring():
     check("an unknown slot still refuses", manager.synthesize("hello", "999"), None)
 
 
+def test_overlay_can_receive_art():
+    """
+    An overlay page must render the elements `art_changed` writes into, even for a
+    slot that currently has no art.
+
+    The block used to be wrapped in `{% if images[n].closed %}`, so an empty slot
+    had no <img> tags, `slot.find('img.mouth-closed')` matched nothing, and
+    assigning a character into that slot drew nothing until the browser source was
+    reloaded -- which reads as an OBS caching problem rather than a bug. Unassigning
+    worked, because the elements existed; that asymmetry was the tell.
+
+    Asserted on the rendered HTML rather than through a browser, because the failure
+    is a missing element, and that is visible in the markup.
+    """
+    print("\noverlay renders art targets for empty slots")
+
+    number = sorted(A.PLAYER_CONFIG)[0]
+    original = A.CHARACTERS.get(number)
+
+    class Empty:
+        """A slot with no character at all -- the state the bug needed."""
+        id = ""
+        display_name = ""
+        has_name = False
+        art_closed = None
+        art_open = None
+
+        def display(self):
+            return {flag: True for flag in A.DISPLAY_FLAGS}
+
+    A.CHARACTERS[number] = Empty()
+    try:
+        html = A.app.test_client().get(f"/overlay?player={number}").get_data(as_text=True)
+        check("the mouth-closed img exists", 'class="character-art mouth-closed"' in html, True)
+        check("the mouth-open img exists", 'class="character-art mouth-open"' in html, True)
+        check("both are hidden rather than omitted", html.count('style="display:none"') >= 2, True)
+        check("the character name box exists",
+              f'id="character-name-{number}"' in html, True)
+    finally:
+        if original is not None:
+            A.CHARACTERS[number] = original
+
+
+def test_overlay_resync_on_connect():
+    """
+    `overlay_here` must reply to the page that announced itself.
+
+    A browser source doesn't reload when the app restarts -- socket.io reconnects
+    the existing page -- so without a reply the overlay keeps drawing pre-restart
+    state forever, with nothing to correct it.
+    """
+    print("\noverlay resyncs when it announces itself")
+
+    number = sorted(A.PLAYER_CONFIG)[0]
+    replies = []
+    real_emit, real_push = A.emit, A.push_status
+    A.emit = lambda event, payload=None, **kw: replies.append((event, payload))
+    A.push_status = lambda: None
+
+    class FakeRequest:
+        sid = "test-sid"
+
+    real_request = A.request
+    A.request = FakeRequest()
+    try:
+        # An app context is required, not optional: slot_payload() -> art_url() ->
+        # url_for('static', ...) needs one. The real handler has it because
+        # Flask-SocketIO runs every event inside a request context -- which is also
+        # why `request.sid` works there. Calling it bare here is the test being
+        # unrealistic, not the handler being wrong.
+        with A.app.test_request_context():
+            A.overlay_here({"players": [number]})
+    finally:
+        A.emit, A.push_status, A.request = real_emit, real_push, real_request
+
+    events = [event for event, _ in replies]
+    check("it replies with art for the slot", "art_changed" in events, True)
+    check("and with whether the slot is in the show", "slot_active" in events, True)
+
+    art = next(p for e, p in replies if e == "art_changed")
+    check("the art payload names the right slot", art["user_number"], number)
+    # A payload missing these is one the page can't act on.
+    check("and carries what the page needs",
+          all(k in art for k in ("art_closed", "art_open", "character_name",
+                                 "show_message", "size_parts")), True)
+
+    A.overlay_clients.pop("test-sid", None)
+
+
 def test_invariant():
     print("\nthe invariant the pacer's comments depend on")
     # register_audio() deletes the oldest wav past AUDIO_CACHE_SIZE, so a backlog
@@ -336,6 +425,8 @@ def main():
     test_gate_on_and_backlog()
     test_inactive_slot_skipped()
     test_synthesis_wiring()
+    test_overlay_can_receive_art()
+    test_overlay_resync_on_connect()
     test_invariant()
 
     print(f"\n{len(PASSED)} passed, {len(FAILED)} failed")

@@ -324,12 +324,27 @@
         <div class="player-slot{% if not active[n] %} slot-off{% endif %}{% if not flags[n].show_character_name %} hide-character-name{% endif %}{% if not flags[n].show_chatter_name %} hide-chatter-name{% endif %}{% if not flags[n].show_message %} hide-message{% endif %}"
              id="player-slot-{{ n }}">
 
-            {% if images[n].closed %}
+            <!-- Rendered even when the slot is empty, hidden by style rather than
+                 omitted by Jinja.
+
+                 The block used to sit inside a conditional on images[n].closed,
+                 which meant an empty slot had no <img> elements at all -- so the
+                 art_changed
+                 handler's slot.find('img.mouth-closed') matched nothing and
+                 .attr() was a silent no-op. Assigning a character INTO an empty
+                 slot therefore drew nothing until the browser source was reloaded,
+                 which reads exactly like the OBS caching problem this page already
+                 cache-busts against. Unassigning worked, because the elements
+                 existed. That asymmetry is the tell.
+
+                 Nothing is drawn either way when the URLs are absent -- the img is
+                 display:none and the boxes are empty -- so this costs nothing and
+                 gives art_changed something to write into. -->
             <div class="character">
-                <img class="character-art mouth-closed" src="{{ images[n].closed }}" alt="">
-                {% if images[n].open %}
-                <img class="character-art mouth-open"   src="{{ images[n].open }}"   alt="">
-                {% endif %}
+                <img class="character-art mouth-closed" alt=""
+                     {% if images[n].closed %}src="{{ images[n].closed }}"{% else %}style="display:none"{% endif %}>
+                <img class="character-art mouth-open"   alt=""
+                     {% if images[n].open %}src="{{ images[n].open }}"{% else %}style="display:none"{% endif %}>
 
                 <!-- Names sit over the bottom of the art, not under it, so toggling
                      one can never change the height of the browser source. -->
@@ -342,7 +357,6 @@
                     </div>
                 </div>
             </div>
-            {% endif %}
 
             <div class="user-message-box" id="user-message-box-{{ n }}">
                 <span class="user-message" id="user-message-{{ n }}">&nbsp;</span>

@@ -124,6 +124,17 @@ at a folder, not a credential, so a stale value can misdirect nothing worse than
 **The name's loose ends.** `.gg`, `.tv`, `.io` and `.app` domains and the Twitch, X, Discord and
 GitHub handles have never been checked. `chatmob.com` is registered but serves an empty page.
 
+#### `twitch_channel` has no default (7 Aug 2026)
+
+It used to fall back to `silverstagvt`. That is the one value guaranteed wrong on every machine
+except the one it was written on, and forgetting it produced a bot that connected **successfully to
+the wrong chat**, with a green status row naming a plausible channel and no keyphrase ever matching.
+
+It's a per-install value set once at setup, so no default could be right. Now `required=True` with
+`default=None`: startup says `Not set: CHATMOB_TWITCH_CHANNEL`, the status row explains it, and the
+bot thread is **skipped rather than handed `[None]`** — the panel, overlays and `/setup` all still
+work, so characters can be set up while the credential is chased.
+
 ### Standing constraints
 
 Every change gets weighed against these:
@@ -405,6 +416,27 @@ bot thread leaving the panel inert — are about fifteen lines between them and 
 Two are prerequisites rather than tidying: an empty slot can't receive art over the socket, which
 **blocks stage F**; and appearance has no live-apply path on the client, which is the half of **stage G**
 missing from its estimate.
+
+### Two overlay desync fixes (7 Aug 2026)
+
+Both from the review, both the same class: a change on the server that never reached the page.
+
+**An empty slot can now receive art.** The character block used to be omitted entirely for a slot
+with no art, so `art_changed`'s `slot.find('img.mouth-closed')` matched nothing and assigning a
+character *into* an empty slot drew nothing until the browser source was reloaded — which reads
+exactly like the OBS caching problem this page already cache-busts against. Unassigning worked,
+because the elements existed; **that asymmetry was the tell.** The block now always renders, with
+each `<img>` hidden by `style="display:none"` when it has no URL. This was blocking stage F, since
+casts exist to fill slots.
+
+**`overlay_here` now replies with the page's current truth** — one `art_changed` and one
+`slot_active` per slot it is showing. A browser source doesn't reload when the app restarts;
+socket.io just reconnects, so an overlay that outlived a restart kept drawing pre-restart state
+with nothing to correct it. `emit()` inside a handler goes to the caller alone, so no other page is
+disturbed and there's no new protocol.
+
+Worth knowing for next time: **Jinja parses `{%` tags inside HTML comments.** A comment explaining
+the old conditional broke the template until the tag syntax was removed from the prose.
 
 ### Not done
 

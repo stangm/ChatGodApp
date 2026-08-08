@@ -72,6 +72,10 @@ If PowerShell blocks the activate script:
 }
 ```
 
+All four are required. `twitch_channel` is your own channel name in lowercase — the one in your
+Twitch URL, not your display name — and it's a per-install value, so there's no default: if it's
+missing the app says so rather than guessing.
+
 **Or** set them as environment variables:
 
 ```powershell
